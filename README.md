@@ -17,7 +17,6 @@ It expires after about 2 months. When the tools start failing, get a new one.
 - Server: `venv\Scripts\python server.py`
 - Inspector (needs Node.js): double-click `inspect.cmd`, or run `inspect.cmd` in the project folder.
   Don't use `mcp dev server.py`: it needs `uv` and runs the server without this project's packages.
-
 - Web mode (for hosting): set `MODE=http` and `MCP_SECRET` (see `.env.example`), then run `server.py`.
   MCP is served only at `/mcp/<MCP_SECRET>`; `/health` returns `ok`. The `Dockerfile` runs this mode.
 
