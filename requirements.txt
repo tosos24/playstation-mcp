@@ -1,0 +1,3 @@
+mcp[cli]
+psnawp
+python-dotenv
