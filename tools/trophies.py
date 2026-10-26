@@ -1,6 +1,6 @@
 """Trophy tools: completion progress, and finding trophies (missing, recent, rarest, by name)."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from psn_client import get_title_trophies, get_trophy_titles
@@ -13,6 +13,8 @@ MAX_SCAN_GAMES = 5
 MAX_RECENT_SCAN_GAMES = 10
 
 OLDEST = datetime.min.replace(tzinfo=timezone.utc)
+# PSN's per-game "last trophy" time is sometimes rounded ~1 s earlier than the trophy itself.
+CLOCK_SLACK = timedelta(minutes=1)
 
 
 def _trophy_dict(tr, game_name: str | None = None) -> dict:
@@ -133,6 +135,13 @@ def register(mcp):
 
         games = _games_by_last_trophy()
 
+        # Platinums are special: the game list already says which games have one earned (or not),
+        # so jump straight to those games instead of guessing.
+        if search and normalize(search) == "platinum":
+            want_earned = status == "earned"
+            games = [g for g in games if g.defined_trophies.platinum
+                     and (status == "all" or bool(g.earned_trophies.platinum) == want_earned)]
+
         # Latest earned trophies across all games. Each game knows when I last earned a trophy
         # in it, so walk games newest-first and stop once no older game could beat what we have.
         if status == "earned" and sort_by == "recent":
@@ -141,7 +150,7 @@ def register(mcp):
                 if len(found) >= limit:
                     cutoff = datetime.fromisoformat(found[limit - 1]["earned_at"])
                     last = game.last_updated_datetime
-                    if last is None or last < cutoff:
+                    if last is None or last + CLOCK_SLACK < cutoff:
                         break
                 searched.append(game.title_name)
                 found += [_trophy_dict(tr, game.title_name) for tr in get_title_trophies(game)
