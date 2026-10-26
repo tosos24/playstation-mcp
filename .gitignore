@@ -5,3 +5,6 @@
 venv/
 __pycache__/
 *.pyc
+
+# Personal planning notes
+PLAN.md
