@@ -13,14 +13,23 @@ from dotenv import load_dotenv
 from mcp.server.mcpserver import MCPServer
 from starlette.responses import PlainTextResponse
 
-from tools import trophies
+from tools import profile, trophies
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
-mcp = MCPServer("playstation")
+# Read by Claude when it connects: a short map of which tool answers which kind of question.
+INSTRUCTIONS = """Tools for reading my own PlayStation Network data. All tools are read-only.
+- Ranking or listing my games by trophy completion: get_trophy_progress.
+- Individual trophies (missing, latest earned, rarest, when I earned one): get_trophies.
+- My PSN level, trophy totals, PS Plus, consoles: get_my_profile.
+If a tool returns "matches", ask me which game I meant, then call again with that exact name.
+For tips on how to earn a trophy, use web search."""
+
+mcp = MCPServer("playstation", instructions=INSTRUCTIONS)
 
 # Each feature adds its tools here. To add one: import it and call register.
 trophies.register(mcp)
+profile.register(mcp)
 
 
 @mcp.custom_route("/health", methods=["GET"])

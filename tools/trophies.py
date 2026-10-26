@@ -1,55 +1,80 @@
-"""Trophy tools: completion progress and missing trophies."""
+"""Trophy tools: completion progress, and finding trophies (missing, recent, rarest, by name)."""
 
-import difflib
-import re
+from datetime import datetime, timezone
+from typing import Literal
 
 from psn_client import get_title_trophies, get_trophy_titles
 
+from tools.common import game_summary, normalize, read_only_tool, resolve_one_game
 
-def _normalize(name: str) -> str:
-    """Lowercase and strip symbols like ™ ® : so names compare loosely."""
-    return re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
+# Fetching one game's trophies costs ~6 s (psnawp waits between requests), so cap scans across games.
+MAX_SCAN_GAMES = 5
+# For "my latest trophies" the newest trophies are almost always in the first few games.
+MAX_RECENT_SCAN_GAMES = 10
 
-
-def _find_games(game_name: str) -> list:
-    """Find games on my list matching a name: exact first, then partial, then close spellings."""
-    titles = get_trophy_titles()
-    wanted = _normalize(game_name)
-    by_name = {}
-    for t in titles:
-        by_name.setdefault(_normalize(t.title_name), []).append(t)
-
-    if wanted in by_name:
-        return by_name[wanted]
-    # Partial match, ignoring spaces too, so "spiderman 2" finds "Spider-Man 2".
-    squash = lambda s: s.replace(" ", "")
-    partial = [t for t in titles if squash(wanted) in squash(_normalize(t.title_name))]
-    if partial:
-        return partial
-    close = difflib.get_close_matches(wanted, by_name.keys(), n=5, cutoff=0.6)
-    return [t for name in close for t in by_name[name]]
+OLDEST = datetime.min.replace(tzinfo=timezone.utc)
 
 
-def _summary(t) -> dict:
-    """Small, clean description of one game."""
-    return {
-        "game": t.title_name,
-        "platforms": sorted(p.value for p in t.title_platform),
-        "progress_percent": t.progress or 0,
-        "has_platinum": bool(t.defined_trophies.platinum),
-        "platinum_earned": bool(t.earned_trophies.platinum),
-        "has_dlc_trophies": bool(t.has_trophy_groups),
+def _trophy_dict(tr, game_name: str | None = None) -> dict:
+    """Small, clean description of one trophy."""
+    d = {
+        "name": tr.trophy_name,
+        "description": tr.trophy_detail,
+        "type": tr.trophy_type.value if tr.trophy_type else None,
+        # PSN sends this as text like "6.6", so turn it into a number.
+        "earn_rate": float(tr.trophy_earn_rate) if tr.trophy_earn_rate is not None else None,
+        "earned": bool(tr.earned),
+        "earned_at": tr.earned_date_time.isoformat() if tr.earned_date_time else None,
+        "hidden": bool(tr.trophy_hidden),
+        "dlc": tr.trophy_group_id not in (None, "default"),
     }
+    if game_name:
+        d = {"game": game_name, **d}
+    return d
+
+
+def _keep(tr, status: str, search: str | None, include_dlc: bool) -> bool:
+    """Should this trophy be in the answer?"""
+    if status == "earned" and not tr.earned:
+        return False
+    if status == "unearned" and tr.earned:
+        return False
+    if not include_dlc and tr.trophy_group_id not in (None, "default"):
+        return False
+    if search:
+        kind = tr.trophy_type.value if tr.trophy_type else ""
+        text = normalize(f"{tr.trophy_name} {tr.trophy_detail} {kind}")
+        if normalize(search) not in text:
+            return False
+    return True
+
+
+def _sort(trophies: list[dict], sort_by: str) -> None:
+    """Sort trophy dicts in place."""
+    if sort_by == "recent":
+        trophies.sort(key=lambda t: t["earned_at"] or "", reverse=True)
+    elif sort_by == "rarest":
+        trophies.sort(key=lambda t: t["earn_rate"] if t["earn_rate"] is not None else 100)
+    else:  # easiest: most players have it
+        trophies.sort(key=lambda t: t["earn_rate"] or 0, reverse=True)
+
+
+def _games_by_last_trophy() -> list:
+    """My games, the one I most recently earned a trophy in first."""
+    return sorted(get_trophy_titles(), key=lambda t: t.last_updated_datetime or OLDEST, reverse=True)
 
 
 def register(mcp):
-    @mcp.tool()
+    tool = read_only_tool(mcp)
+
+    @tool
     def get_trophy_progress(limit: int = 20, include_completed: bool = False) -> list[dict]:
         """List my PlayStation games by trophy completion %, highest first.
 
         Use this for questions like "which games am I closest to platinum on?" or
         "what are my most completed games?". By default games already at 100% are
-        left out; set include_completed=True to include them.
+        left out; set include_completed=True to include them. For individual
+        trophies, use get_trophies instead.
 
         Notes: PSN's % is weighted by trophy points (a gold counts more than a
         bronze) and includes DLC trophies. Some games have no platinum at all
@@ -59,41 +84,84 @@ def register(mcp):
         if not include_completed:
             titles = [t for t in titles if (t.progress or 0) < 100]
         titles = sorted(titles, key=lambda t: t.progress or 0, reverse=True)
-        return [_summary(t) for t in titles[:limit]]
+        return [game_summary(t) for t in titles[:limit]]
 
-    @mcp.tool()
-    def get_missing_trophies(game_name: str, include_dlc: bool = True) -> dict:
-        """List the trophies I haven't earned yet for one game, easiest (most earned) first.
+    @tool
+    def get_trophies(
+        game_name: str | None = None,
+        status: Literal["unearned", "earned", "all"] = "unearned",
+        sort_by: Literal["easiest", "rarest", "recent"] | None = None,
+        search: str | None = None,
+        include_dlc: bool = True,
+        limit: int = 20,
+    ) -> dict:
+        """Find individual PlayStation trophies: missing ones, recently earned ones, rarest, or one by name.
 
-        game_name can be loose ("spiderman 2", "ratchet"). If more than one game
-        matches (e.g. PS4 and PS5 versions), this returns "matches" instead, and
-        you should ask which one, then call again with the exact name.
+        Examples:
+        - "What am I missing in Spider-Man 2?" -> game_name="spider-man 2" (defaults: unearned, easiest first)
+        - "What was my latest trophy?" -> status="earned", sort_by="recent", limit=1
+        - "Latest trophy in Ratchet?" -> game_name="ratchet", status="earned", sort_by="recent", limit=1
+        - "When did I get the platinum in X?" -> game_name="X", status="earned", search="platinum"
+          (search matches trophy name, description and type, e.g. "platinum" or "gold")
+        - "My rarest trophies?" -> status="earned", sort_by="rarest"
+
+        game_name can be loose ("spiderman 2"). If several games match, this returns
+        "matches" instead: ask which one, then call again with the exact name.
+
+        sort_by: "easiest" = most players have it, "rarest" = fewest players have it,
+        "recent" = newest earned first. Default: "recent" for earned, "easiest" otherwise.
+
+        Without game_name, only my most recently active games are searched (see "note"
+        and "games_searched" in the result). For whole-library rankings of games, use
+        get_trophy_progress instead.
 
         Each trophy has: name, description, type (bronze/silver/gold/platinum),
-        earn_rate (% of all players who have it) and whether it's DLC.
-        Hidden trophies may show "hidden": true and no useful description.
+        earn_rate (% of all players who have it), earned, earned_at (UTC), hidden, dlc.
         """
-        games = _find_games(game_name)
-        if not games:
-            return {"error": f"No game on my trophy list matches '{game_name}'."}
-        if len(games) > 1:
-            return {"matches": [_summary(t) for t in games]}
+        sort_by = sort_by or ("recent" if status == "earned" else "easiest")
+        limit = max(1, limit)
 
-        game = games[0]
-        missing = []
-        for tr in get_title_trophies(game):
-            is_dlc = tr.trophy_group_id not in (None, "default")
-            if tr.earned or (is_dlc and not include_dlc):
-                continue
-            missing.append({
-                "name": tr.trophy_name,
-                "description": tr.trophy_detail,
-                "type": tr.trophy_type.value if tr.trophy_type else None,
-                # PSN sends this as text like "6.6", so turn it into a number.
-                "earn_rate": float(tr.trophy_earn_rate) if tr.trophy_earn_rate is not None else None,
-                "hidden": bool(tr.trophy_hidden),
-                "dlc": is_dlc,
-            })
-        # Most-earned first: those are usually the easiest to get.
-        missing.sort(key=lambda m: m["earn_rate"] or 0, reverse=True)
-        return {**_summary(game), "missing_count": len(missing), "missing": missing}
+        # One game: everything comes from a single (cached) lookup.
+        if game_name:
+            game, reply = resolve_one_game(game_name)
+            if reply:
+                return reply
+            found = [_trophy_dict(tr) for tr in get_title_trophies(game)
+                     if _keep(tr, status, search, include_dlc)]
+            _sort(found, sort_by)
+            return {**game_summary(game), "count": len(found), "trophies": found[:limit]}
+
+        games = _games_by_last_trophy()
+
+        # Latest earned trophies across all games. Each game knows when I last earned a trophy
+        # in it, so walk games newest-first and stop once no older game could beat what we have.
+        if status == "earned" and sort_by == "recent":
+            found, searched = [], []
+            for game in games[:MAX_RECENT_SCAN_GAMES]:
+                if len(found) >= limit:
+                    cutoff = datetime.fromisoformat(found[limit - 1]["earned_at"])
+                    last = game.last_updated_datetime
+                    if last is None or last < cutoff:
+                        break
+                searched.append(game.title_name)
+                found += [_trophy_dict(tr, game.title_name) for tr in get_title_trophies(game)
+                          if _keep(tr, status, search, include_dlc)]
+                _sort(found, "recent")
+            return {"games_searched": searched, "count": len(found), "trophies": found[:limit]}
+
+        # Anything else across games: check only the most recently active ones, to stay fast.
+        if status == "unearned":
+            games = [g for g in games if (g.progress or 0) < 100]
+        scope = games[:MAX_SCAN_GAMES]
+        found = []
+        for game in scope:
+            found += [_trophy_dict(tr, game.title_name) for tr in get_title_trophies(game)
+                      if _keep(tr, status, search, include_dlc)]
+        _sort(found, sort_by)
+        return {
+            "games_searched": [g.title_name for g in scope],
+            "note": (f"Only searched my {len(scope)} most recently active games, to stay fast. "
+                     "Pass game_name to search a specific game."),
+            "count": len(found),
+            "trophies": found[:limit],
+        }

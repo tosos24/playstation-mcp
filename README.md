@@ -21,9 +21,14 @@ It expires after about 2 months. When the tools start failing, get a new one.
   MCP is served only at `/mcp/<MCP_SECRET>`; `/health` returns `ok`. The `Dockerfile` runs this mode.
 
 ## Tools
+All tools are read-only.
 - `get_trophy_progress(limit, include_completed)`: games by trophy %, highest first
-- `get_missing_trophies(game_name, include_dlc)`: unearned trophies for one game, easiest first
+- `get_trophies(game_name?, status, sort_by, search?, include_dlc, limit)`: individual trophies:
+  missing, latest earned, rarest, or one by name ("when did I get the platinum in X?")
+- `get_my_profile()`: PSN level, trophy totals, PS Plus, consoles
 
 ## Adding a feature
 Create `tools/<feature>.py` with a `register(mcp)` function, then add one import and one
-`register` line in `server.py`.
+`register` line in `server.py`. Decorate tools with `read_only_tool(mcp)` from `tools/common.py`
+(marks them read-only and turns PSN errors into clear messages), and add a line to the server
+`INSTRUCTIONS` saying which questions the new tool answers.

@@ -16,6 +16,7 @@ from psnawp_api.models.trophies import PlatformType
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 CACHE_SECONDS = 10 * 60
+HOUR = 60 * 60
 
 _me = None
 _cache: dict[str, tuple[float, object]] = {}
@@ -32,10 +33,10 @@ def get_me():
     return _me
 
 
-def cached(key: str, fetch):
-    """Return a saved result for `key` if it's fresh, otherwise call fetch() and save it."""
+def cached(key: str, fetch, seconds: int = CACHE_SECONDS):
+    """Return a saved result for `key` if it's fresher than `seconds`, otherwise call fetch() and save it."""
     now = time.time()
-    if key in _cache and now - _cache[key][0] < CACHE_SECONDS:
+    if key in _cache and now - _cache[key][0] < seconds:
         return _cache[key][1]
     value = fetch()
     _cache[key] = (now, value)
@@ -68,3 +69,19 @@ def get_title_trophies(title) -> list:
             )
         ),
     )
+
+
+def get_profile() -> dict:
+    """My PSN profile (raw), including trophy level and counts. Cached for an hour."""
+    return cached("profile", lambda: get_me().get_profile_legacy()["profile"], HOUR)
+
+
+def get_devices() -> list[dict]:
+    """Consoles registered to my account (raw). Cached for an hour."""
+    return cached("devices", lambda: get_me().get_account_devices(), HOUR)
+
+
+def forget_login():
+    """Drop the saved login so the next call logs in again (e.g. after the NPSSO is renewed)."""
+    global _me
+    _me = None
