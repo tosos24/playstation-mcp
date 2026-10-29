@@ -8,6 +8,8 @@ import re
 
 import pytest
 
+from tools.common import display_name
+
 import psn_client
 from tests.fakes import call, call_list
 from tools.common import normalize
@@ -34,9 +36,9 @@ def total(ts):
 
 
 def test_progress_sorted_and_unfinished():
-    rows = call_list("get_trophy_progress", {"limit": 10})
+    rows = call("list_games", {"limit": 10})["games"]
     assert 0 < len(rows) <= 10
-    pct = [r["progress_percent"] for r in rows]
+    pct = [r["trophy_progress_percent"] for r in rows]
     assert pct == sorted(pct, reverse=True)
     assert all(p < 100 for p in pct)
 
@@ -44,7 +46,7 @@ def test_progress_sorted_and_unfinished():
 def test_one_game_counts_match_psn_totals():
     game = unique_recent_game()
     out = call("get_trophies", {"game_name": game.title_name, "status": "all", "limit": 1000})
-    assert out["game"] == game.title_name
+    assert out["game"] == display_name(game.title_name)
     assert out["count"] == total(game.defined_trophies) == len(out["trophies"])
     earned = call("get_trophies", {"game_name": game.title_name, "status": "earned", "limit": 1000})
     assert earned["count"] == total(game.earned_trophies)

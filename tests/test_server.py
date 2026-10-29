@@ -2,7 +2,7 @@ import asyncio
 
 import server
 
-EXPECTED = {"get_trophy_progress", "get_trophies", "get_my_profile"}
+EXPECTED = {"list_games", "get_game_details", "get_trophies", "get_my_profile"}
 
 
 def tools():
@@ -37,12 +37,6 @@ def test_get_trophies_enums_and_defaults():
     assert props["limit"]["default"] == 20
     assert props["game_name"]["default"] is None
     assert props["search"]["default"] is None
-
-
-def test_get_trophy_progress_defaults():
-    props = tools()["get_trophy_progress"].input_schema["properties"]
-    assert props["limit"]["default"] == 20
-    assert props["include_completed"]["default"] is False
 
 
 def test_get_my_profile_takes_no_args():

@@ -111,7 +111,7 @@ def test_auth_errors_reset_login(psn, monkeypatch, cls):
     monkeypatch.setattr(psn_client, "_me", object())
     raise_in(psn, "titles", cls('{"error": {"code": 2, "message": "Invalid token"}}'))
     with pytest.raises(ToolError) as info:
-        call_raw("get_trophy_progress")
+        call_raw("get_trophies", {"game_name": "x"})
     assert not isinstance(info.value, UnexpectedToolError)
     assert "NPSSO" in str(info.value)
     assert psn_client._me is None
@@ -137,7 +137,7 @@ def test_specific_errors(psn, monkeypatch, cls, text):
 def test_other_psn_errors_include_message(psn, cls):
     raise_in(psn, "titles", cls('{"error": {"code": 500, "message": "Upstream broke"}}'))
     with pytest.raises(ToolError) as info:
-        call_raw("get_trophy_progress")
+        call_raw("get_trophies", {"game_name": "x"})
     assert not isinstance(info.value, UnexpectedToolError)
     assert "PSN request failed: Upstream broke" in str(info.value)
 
@@ -145,7 +145,7 @@ def test_other_psn_errors_include_message(psn, cls):
 def test_plain_text_psn_error(psn):
     raise_in(psn, "titles", PSNAWPServerError("Bad gateway"))
     with pytest.raises(ToolError) as info:
-        call_raw("get_trophy_progress")
+        call_raw("get_trophies", {"game_name": "x"})
     assert "PSN request failed: Bad gateway" in str(info.value)
 
 
