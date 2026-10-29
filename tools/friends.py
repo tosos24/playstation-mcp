@@ -135,7 +135,8 @@ def register(mcp):
         loosely; other players need their exact PSN name. If several friends match, this returns
         "matches": ask which one.
 
-        Players can hide their trophies; then "trophies" says "private".
+        Players can hide their trophies; then "trophies" says "private". "none" means they have
+        no trophy list at all.
         """
         user, is_friend, reply = _resolve_player(name)
         if reply:
@@ -164,6 +165,9 @@ def register(mcp):
             ]
         except PSNAWPForbiddenError:
             result["trophies"] = "private"
+        except PSNAWPNotFoundError:
+            result["trophies"] = "none"
+            result["note"] = "No trophy list (hasn't earned any trophies, or PSN has no data)"
         return result
 
     @tool
@@ -177,7 +181,7 @@ def register(mcp):
 
         Use for "how do I compare with X?", "who's further in Spider-Man 2, me or X?",
         "which trophies does X have that I don't in Y?". If they hide their trophies, the
-        result says "private".
+        result says "private"; if they have no trophy list, "none".
         """
         user, _, reply = _resolve_player(name)
         if reply:
@@ -219,6 +223,9 @@ def register(mcp):
             their_titles = get_player_trophy_titles(user)
         except PSNAWPForbiddenError:
             return {**result, "my_trophies": my_counts, "their_trophies": "private"}
+        except PSNAWPNotFoundError:
+            return {**result, "my_trophies": my_counts, "their_trophies": "none",
+                    "note": f"{user.online_id} has no trophy list (hasn't earned any trophies, or PSN has no data)."}
         result.update({"their_level": summary.trophy_level, "my_trophies": my_counts,
                        "their_trophies": _counts(summary.earned_trophies)})
 

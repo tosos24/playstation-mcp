@@ -8,6 +8,7 @@ import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 from psnawp_api.core.psnawp_exceptions import (
     PSNAWPForbiddenError,
+    PSNAWPNotFoundError,
     PSNAWPTooManyRequestsError,
 )
 
@@ -251,6 +252,16 @@ def test_get_player_private_trophies(psn, where):
     assert out["online_id"] == "Secretive" and out["status"] == "online"
 
 
+@pytest.mark.parametrize("where", ["summary", "titles"])
+def test_get_player_no_trophy_list(psn, where):
+    aid = psn.add_friend("Newbie", online=True, last_online=ago(hours=2))
+    psn.player_errors[(aid, where)] = PSNAWPNotFoundError("no trophies")
+    out = gp("newbie")
+    assert out["trophies"] == "none"
+    assert out["note"] == "No trophy list (hasn't earned any trophies, or PSN has no data)"
+    assert out["online_id"] == "Newbie" and out["status"] == "online"
+
+
 def test_get_player_matches_passthrough(psn):
     psn.add_friend("Twin_A")
     psn.add_friend("Twin_B")
@@ -346,6 +357,18 @@ def test_compare_overall_private(psn, where):
     assert out == {"player": "Hidden", "my_level": 400,
                    "my_trophies": {"platinum": 2, "gold": 5, "silver": 20, "bronze": 100, "total": 127},
                    "their_trophies": "private"}
+
+
+@pytest.mark.parametrize("where", ["summary", "titles"])
+def test_compare_overall_no_trophy_list(psn, where):
+    psn.profile = my_profile()
+    aid = psn.add_friend("Newbie")
+    psn.player_errors[(aid, where)] = PSNAWPNotFoundError("no trophies")
+    out = cmp("newbie")
+    assert out["their_trophies"] == "none"
+    assert "Newbie has no trophy list" in out["note"]
+    assert out["my_level"] == 400 and out["my_trophies"]["total"] == 127
+    assert "shared_games" not in out
 
 
 def test_compare_non_friend(psn):
