@@ -20,6 +20,15 @@ It expires after about 2 months. When the tools start failing, get a new one.
 - Web mode (for hosting): set `MODE=http` and `MCP_SECRET` (see `.env.example`), then run `server.py`.
   MCP is served only at `/mcp/<MCP_SECRET>`; `/health` returns `ok`. The `Dockerfile` runs this mode.
 
+## Tests
+```
+venv\Scripts\python -m pip install -r requirements-dev.txt
+venv\Scripts\python -m pytest                 # unit tests, fake PSN data
+set RUN_LIVE=1 && venv\Scripts\python -m pytest -m live   # a few checks against the real account
+```
+`.claude/agents/` holds the two Claude Code agents used while building: `ps-tester` writes and runs
+tests after each step, and `ps-bug-fixer` fixes what it finds.
+
 ## Tools
 All tools are read-only.
 - `get_trophy_progress(limit, include_completed)`: games by trophy %, highest first
