@@ -483,6 +483,14 @@ def test_never_played_matches_joined_trophy_name(psn):
     assert lg(filter="never_played")["count"] == 0
 
 
+
+def test_never_played_excludes_games_with_earned_trophies(psn):
+    psn.add("Trophied No Play Time™ Trophies", done(1) + todo(1))   # trophies earned, no play-time entry
+    psn.own("Trophied No Play Time", platform="PS5")
+    psn.add("Listed Nothing Earned", todo(2))                        # on the list, nothing earned
+    psn.own("Listed Nothing Earned", platform="PS5")
+    assert names(lg(filter="never_played")) == ["Listed Nothing Earned"]
+
 @pytest.mark.parametrize("limit,expected", [(0, 1), (-5, 1), (1, 1), (2, 2), (1000, 6)])
 def test_never_played_limit(owned, limit, expected):
     out = lg(filter="never_played", limit=limit)

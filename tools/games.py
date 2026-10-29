@@ -153,11 +153,14 @@ def _row(rec: dict) -> dict:
 
 
 def _never_played(records: list[dict]) -> list[dict]:
-    """Games in my library with no play time at all (one entry per game, even if owned on PS4 and PS5)."""
+    """Games in my library with no play time and no earned trophy (one entry per game, even if owned on PS4 and PS5)."""
     stats = get_title_stats()
     played_ids = {s.title_id for s in stats if s.title_id}
     played_names = {_name_key(s.name or "") for s in stats}
     played_names |= {_name_key(r["name"]) for r in records if r["has_play_data"]}
+    # An earned trophy means I played it, even if PSN has no play time for it.
+    played_names |= {_name_key(r["name"]) for r in records
+                     if r["title"] and any(getattr(r["title"].earned_trophies, k) for k in TROPHY_TYPES)}
 
     games: dict[str, dict] = {}
     for item in get_library():
