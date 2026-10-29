@@ -121,6 +121,9 @@ def game_summary(t) -> dict:
 
 def resolve_one_game(game_name: str):
     """Return (game, None) for a single match, or (None, reply) where reply is an error or a list of matches."""
+    # Only symbols (e.g. "™") would match every game, so ask for a real name instead.
+    if not normalize(game_name):
+        return None, {"error": f"'{game_name}' isn't a game name. Ask which game they mean."}
     games = find_games(game_name)
     if not games:
         return None, {"error": f"No game on my trophy list matches '{game_name}'."}

@@ -84,6 +84,14 @@ def test_unknown_game_returns_error(library):
     assert "zzzz qqqq" in out["error"]
 
 
+@pytest.mark.parametrize("name", ["™", " ®: ", "!!!"])
+def test_symbols_only_game_name_asks_for_a_name(library, name):
+    out = call("get_trophies", {"game_name": name})
+    assert set(out) == {"error"}
+    assert "game name" in out["error"]
+    assert library.fetched == []
+
+
 def test_exact_name_from_matches_resolves(library):
     out = call("get_trophies", {"game_name": "Marvel's Spider-Man"})
     assert out["game"] == "Marvel's Spider-Man"
