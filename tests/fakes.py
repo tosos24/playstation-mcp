@@ -131,7 +131,7 @@ class FakePSN:
         self.player_trophies = {}  # (account ID, np_communication_id) -> list of trophies
         self.player_errors = {}  # (account ID, "summary"|"titles"|"trophies") -> exception
         self.player_lookups = []  # names passed to get_player
-        self.user_lookups = []  # account IDs passed to get_psnawp().user(account_id=...)
+        self.user_lookups = []  # account IDs passed to get_player_by_account_id
 
     def add(self, name, trophies=(), **kw):
         t = title(name, trophies, **kw)
@@ -198,15 +198,12 @@ class FakePSN:
                 return u
         raise PSNAWPNotFoundError(f"Online ID {online_id} does not exist.")
 
-    def get_psnawp(self):
-        fake = self
+    def get_player_by_account_id(self, account_id):
+        self.user_lookups.append(account_id)
+        return self.players[account_id]
 
-        class _P:
-            def user(self, account_id=None, online_id=None):
-                assert account_id is not None
-                fake.user_lookups.append(account_id)
-                return fake.players[account_id]
-        return _P()
+    def get_psnawp(self):
+        raise AssertionError("tools should look players up through the psn_client helpers")
 
     def _player_error(self, player, kind):
         err = self.player_errors.get((player.account_id, kind))

@@ -247,6 +247,11 @@ def get_player(online_id: str):
     return cached(f"player:{online_id.lower()}", lambda: get_psnawp().user(online_id=online_id), HOUR)
 
 
+def get_player_by_account_id(account_id: str):
+    """Another player by account ID (psnawp User), e.g. a friend. Cached for an hour."""
+    return cached(f"player_id:{account_id}", lambda: get_psnawp().user(account_id=account_id), HOUR)
+
+
 def get_player_summary(player):
     """A player's trophy level and counts (psnawp TrophySummary). Cached."""
     return cached(f"player_summary:{player.account_id}", lambda: player.trophy_summary())

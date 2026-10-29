@@ -15,7 +15,8 @@ HELPERS = ("get_trophy_titles", "get_title_trophies", "get_profile", "get_device
            "get_title_stats", "get_library", "get_trophy_groups", "map_title_ids",
            # step 3
            "get_friend_ids", "get_friend_request_ids", "get_profiles", "get_presences", "get_player",
-           "get_psnawp", "get_player_summary", "get_player_trophy_titles", "get_player_title_trophies")
+           "get_player_by_account_id", "get_psnawp",
+           "get_player_summary", "get_player_trophy_titles", "get_player_title_trophies")
 # Every module that imported a fetch helper by name.
 MODULES = (psn_client, tools.common, tools.games, tools.trophies, tools.profile, tools.friends, tools.recap)
 

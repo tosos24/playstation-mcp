@@ -14,7 +14,7 @@ from tests.fakes import raw_presence, title
 # Captured at import, before any psn fixture patches the module.
 real = {name: getattr(psn_client, name) for name in (
     "get_friend_ids", "get_friend_request_ids", "get_profiles", "get_presences", "get_player", "get_psnawp",
-    "get_player_summary", "get_player_trophy_titles", "get_player_title_trophies")}
+    "get_player_by_account_id", "get_player_summary", "get_player_trophy_titles", "get_player_title_trophies")}
 
 
 class ProfileAPI:
@@ -294,6 +294,26 @@ def test_get_player_not_found_not_cached(psnawp):
             real["get_player"]("ghost")
     assert psnawp.calls == ["ghost", "ghost"]
     assert "player:ghost" not in psn_client._cache
+
+
+def test_get_player_by_account_id_cached_an_hour(monkeypatch):
+    calls = []
+
+    class ByID:
+        def user(self, online_id=None, account_id=None):
+            assert online_id is None
+            calls.append(account_id)
+            return SimpleNamespace(online_id="Friend", account_id=account_id)
+
+    monkeypatch.setattr(psn_client, "get_me", lambda: None)
+    monkeypatch.setattr(psn_client, "_psnawp", ByID())
+    u = real["get_player_by_account_id"]("123")
+    assert real["get_player_by_account_id"]("123") is u
+    assert calls == ["123"]  # two lookups, one request
+    t, v = psn_client._cache["player_id:123"]
+    psn_client._cache["player_id:123"] = (time.time() - HOUR - 1, v)
+    real["get_player_by_account_id"]("123")
+    assert calls == ["123", "123"]
 
 
 class Player:

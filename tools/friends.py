@@ -12,13 +12,13 @@ from psn_client import (
     get_friend_ids,
     get_friend_request_ids,
     get_player,
+    get_player_by_account_id,
     get_player_summary,
     get_player_title_trophies,
     get_player_trophy_titles,
     get_presences,
     get_profile,
     get_profiles,
-    get_psnawp,
     get_title_trophies,
     get_trophy_titles,
 )
@@ -76,7 +76,7 @@ def _resolve_player(name: str):
         return None, None, {"matches": sorted(partial),
                             "note": "Several friends match. Ask which one, then call again with the exact name."}
     if partial:
-        return get_psnawp().user(account_id=friends[partial[0]]), True, None
+        return get_player_by_account_id(friends[partial[0]]), True, None
     try:
         return get_player(name.strip()), False, None
     except PSNAWPNotFoundError:
