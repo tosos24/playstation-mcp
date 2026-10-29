@@ -439,8 +439,6 @@ def test_compare_empty_game_name_means_overall(psn):
 
 # ---------- known-to-be-arguable behaviour ----------
 
-@pytest.mark.xfail(strict=True, reason="BUG: friend names go through the game-name Roman numeral mapping, "
-                                       "so 'darkv' doesn't find friend 'Dark_V' (normalized to 'dark5')")
 def test_friend_name_with_roman_letter_typed_without_separator(psn):
     psn.add_friend("Dark_V")
     out = gp("darkv")

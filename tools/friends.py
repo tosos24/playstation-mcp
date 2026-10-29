@@ -4,6 +4,8 @@ PSN's privacy settings apply: a player can hide their trophies or online status,
 the tools report that ("private") instead of failing.
 """
 
+import re
+
 from psnawp_api.core.psnawp_exceptions import PSNAWPForbiddenError, PSNAWPNotFoundError
 
 from psn_client import (
@@ -21,7 +23,7 @@ from psn_client import (
     get_trophy_titles,
 )
 
-from tools.common import display_name, normalize, read_only_tool, resolve_one_game
+from tools.common import display_name, read_only_tool, resolve_one_game
 
 TROPHY_TYPES = ("platinum", "gold", "silver", "bronze")
 # How many trophy names to list on each side of a per-game comparison.
@@ -51,17 +53,25 @@ def _friends_by_name() -> dict[str, str]:
     return {profiles[aid].get("onlineId"): aid for aid in ids if profiles.get(aid, {}).get("onlineId")}
 
 
+def _name_key(name: str) -> str:
+    """A PSN name for loose matching: lowercase letters and digits only.
+
+    Not tools.common.normalize: that maps Roman numerals for game names, which would turn "Dark_V" into "dark5".
+    """
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
 def _resolve_player(name: str):
     """Find a player: my friends first (loose name match), then any exact PSN name.
 
     Returns (user, is_friend, None) or (None, None, reply) where reply is an error or a list of matches.
     """
-    wanted = normalize(name).replace(" ", "")
+    wanted = _name_key(name)
     if not wanted:
         return None, None, {"error": "Give a PSN name (online ID)."}
     friends = _friends_by_name()
-    exact = [n for n in friends if normalize(n).replace(" ", "") == wanted]
-    partial = exact or [n for n in friends if wanted in normalize(n).replace(" ", "")]
+    exact = [n for n in friends if _name_key(n) == wanted]
+    partial = exact or [n for n in friends if wanted in _name_key(n)]
     if len(partial) > 1:
         return None, None, {"matches": sorted(partial),
                             "note": "Several friends match. Ask which one, then call again with the exact name."}
