@@ -8,9 +8,11 @@ import json
 from datetime import datetime, timedelta, timezone
 from itertools import count
 
+from psnawp_api.models.title_stats import PlatformCategory, TitleStats
 from psnawp_api.models.trophies import PlatformType
 from psnawp_api.models.trophies.trophy import TrophyWithProgress
 from psnawp_api.models.trophies.trophy_constants import TrophySet, TrophyType
+from psnawp_api.models.trophies.trophy_group import TrophyGroupsSummary, TrophyGroupSummaryWithProgress
 from psnawp_api.models.trophies.trophy_titles import TrophyTitle
 
 BASE = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -111,6 +113,11 @@ class FakePSN:
         self.profile = {}
         self.devices = []
         self.raise_on = {}  # helper name -> exception to raise
+        self.stats = []  # TitleStats
+        self.library = []  # raw entitlement dicts
+        self.groups = {}  # np_communication_id -> TrophyGroupsSummary
+        self.title_map = {}  # play-time title ID -> np_communication_id
+        self.mapped = []  # title-ID lists passed to map_title_ids
 
     def add(self, name, trophies=(), **kw):
         t = title(name, trophies, **kw)
@@ -137,6 +144,116 @@ class FakePSN:
 
     def get_devices(self):
         return self.devices
+
+    def get_title_stats(self):
+        if "stats" in self.raise_on:
+            raise self.raise_on["stats"]
+        return list(self.stats)
+
+    def get_library(self):
+        if "library" in self.raise_on:
+            raise self.raise_on["library"]
+        return list(self.library)
+
+    def get_trophy_groups(self, t):
+        if "groups" in self.raise_on:
+            raise self.raise_on["groups"]
+        return self.groups[t.np_communication_id]
+
+    def map_title_ids(self, title_ids):
+        self.mapped.append(list(title_ids))
+        return {tid: self.title_map.get(tid) for tid in title_ids}
+
+    # Builders for the step-2 data.
+    def play(self, name, hours=1.0, **kw):
+        s = stat(name, hours, **kw)
+        self.stats.append(s)
+        return s
+
+    def own(self, name, **kw):
+        item = lib_item(name, **kw)
+        self.library.append(item)
+        return item
+
+    def set_groups(self, t, *groups):
+        self.groups[t.np_communication_id] = groups_summary(t, groups)
+
+
+NOW = datetime.now(timezone.utc)
+
+
+def ago(days: float = 0, hours: float = 0) -> datetime:
+    """A UTC time relative to the real current time (play-time checks use datetime.now)."""
+    return NOW - timedelta(days=days, hours=hours)
+
+
+_CATEGORY = {"PS4": PlatformCategory.PS4, "PS5": PlatformCategory.PS5, None: PlatformCategory.UNKNOWN,
+             "UNKNOWN": PlatformCategory.UNKNOWN}
+
+
+def stat(name, hours=1.0, platform="PS5", title_id="auto", play_count=1, first=None, last=None,
+         duration="auto"):
+    """A TitleStats (play time). platform: "PS4", "PS5" or None/"UNKNOWN" (apps)."""
+    if title_id == "auto":
+        title_id = f"{'CUSA' if platform == 'PS4' else 'PPSA'}{next(_ids):05d}_00"
+    if duration == "auto":
+        duration = timedelta(hours=hours)
+    return TitleStats(
+        title_id=title_id,
+        name=name,
+        image_url=None,
+        category=_CATEGORY[platform],
+        play_count=play_count,
+        first_played_date_time=first if first is not None else ago(days=365),
+        last_played_date_time=last if last is not None else ago(days=1),
+        play_duration=duration,
+    )
+
+
+def lib_item(name, platform="PS5", title_id="auto", game_meta_name="same", title_meta_name="same"):
+    """A raw entitlement dict like game_entitlements() yields."""
+    if title_id == "auto":
+        title_id = f"{'CUSA' if platform == 'PS4' else 'PPSA'}{next(_ids):05d}_00"
+    package = {"PS4": "PS4GD", "PS5": "PSGD"}.get(platform, platform)
+    game_meta = {"name": name if game_meta_name == "same" else game_meta_name, "packageType": package}
+    return {
+        "id": f"UP0006-{title_id}-XXXX",
+        "productId": f"UP0006-{title_id}-XXXX" if title_id else None,
+        "gameMeta": game_meta,
+        "titleMeta": {"titleId": title_id, "name": name if title_meta_name == "same" else title_meta_name},
+    }
+
+
+def group(gid="default", name="Base Game", earned=None, defined=None, progress=0):
+    """A TrophyGroupSummaryWithProgress; earned/defined are dicts like {"bronze": 3}."""
+    def ts(d):
+        return TrophySet(**{"bronze": 0, "silver": 0, "gold": 0, "platinum": 0, **(d or {})})
+    return TrophyGroupSummaryWithProgress(
+        trophy_group_id=gid,
+        trophy_group_name=name,
+        trophy_group_detail=None,
+        trophy_group_icon_url=None,
+        defined_trophies=ts(defined),
+        progress=progress,
+        earned_trophies=ts(earned),
+        last_updated_datetime=None,
+    )
+
+
+def groups_summary(t, groups):
+    return TrophyGroupsSummary(
+        trophy_set_version="01.00",
+        trophy_title_name=t.title_name,
+        trophy_title_detail=None,
+        trophy_title_icon_url=None,
+        trophy_title_platform=set(t.title_platform),
+        defined_trophies=t.defined_trophies,
+        trophy_groups=list(groups),
+        hidden_flag=False,
+        progress=t.progress,
+        earned_trophies=t.earned_trophies,
+        last_updated_datetime=t.last_updated_datetime,
+    )
 
 
 def raw_profile(**over):

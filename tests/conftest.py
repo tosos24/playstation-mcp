@@ -4,13 +4,15 @@ import pytest
 
 import psn_client
 import tools.common
+import tools.games
 import tools.profile
 import tools.trophies
 from tests.fakes import FakePSN
 
-HELPERS = ("get_trophy_titles", "get_title_trophies", "get_profile", "get_devices")
+HELPERS = ("get_trophy_titles", "get_title_trophies", "get_profile", "get_devices",
+           "get_title_stats", "get_library", "get_trophy_groups", "map_title_ids")
 # Every module that imported a fetch helper by name.
-MODULES = (psn_client, tools.common, tools.trophies, tools.profile)
+MODULES = (psn_client, tools.common, tools.games, tools.trophies, tools.profile)
 
 
 def pytest_collection_modifyitems(config, items):

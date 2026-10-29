@@ -5,12 +5,14 @@ They assert invariants only, never values that change as the owner plays.
 
 import json
 import re
+from datetime import datetime, timezone
 
 import pytest
 
 import psn_client
 from tests.fakes import call, call_list
 from tools.common import display_name, normalize
+from tools.games import _name_key
 
 pytestmark = pytest.mark.live
 
@@ -86,3 +88,67 @@ def test_profile_has_no_private_fields():
     assert out["trophies"]["total"] == sum(out["trophies"][k] for k in ("platinum", "gold", "silver", "bronze"))
     assert out["games_on_trophy_list"] == len(psn_client.get_trophy_titles())
     assert isinstance(out["trophy_level"], int)
+
+
+# ---------- step 2: list_games / get_game_details (about 10-20 more requests, mostly one-off title-ID lookups) ----------
+
+def test_list_games_playtime_sorted_and_possible():
+    out = call("list_games", {"sort_by": "playtime", "limit": 10_000})
+    rows = out["games"]
+    assert out["count"] == len(rows) > 0
+    hours = [r["hours_played"] if r["hours_played"] is not None else -1 for r in rows]
+    assert hours == sorted(hours, reverse=True)
+    now = datetime.now(timezone.utc)
+    for r in rows:
+        assert not (r["game"] or "").lower().endswith(" trophies"), r["game"]
+        if r["hours_played"] and r["first_played"]:
+            first = datetime.fromisoformat(r["first_played"]).replace(tzinfo=timezone.utc)
+            assert r["hours_played"] <= (now - first).total_seconds() / 3600 + 24, r
+        if r["trophy_progress_percent"] is None:
+            assert r["has_platinum"] is None and r["last_trophy"] is None
+    assert "note" in out
+    names = [r["game"] for r in rows]
+    assert all(n not in names for n in out.get("left_out", []))
+
+
+def test_list_games_all_covers_trophy_list():
+    out = call("list_games", {"filter": "all", "limit": 10_000})
+    with_list = [r for r in out["games"] if r["trophy_progress_percent"] is not None]
+    assert len(with_list) == len(psn_client.get_trophy_titles())
+    pct = [r["trophy_progress_percent"] for r in with_list]
+    assert pct == sorted(pct, reverse=True)
+    assert all(not (r["game"] or "").lower().endswith(" trophies") for r in out["games"])
+
+
+def test_never_played_not_played():
+    never = call("list_games", {"filter": "never_played", "limit": 10_000})
+    assert never["count"] == len(never["games"])
+    keys = [_name_key(g["game"]) for g in never["games"]]
+    assert len(keys) == len(set(keys))  # one entry per game, even if owned on PS4 and PS5
+    played = call("list_games", {"sort_by": "playtime", "limit": 10_000})["games"]
+    played_keys = {_name_key(r["game"]) for r in played if r["hours_played"] is not None}
+    assert not set(keys) & played_keys
+    stat_ids = {s.title_id for s in psn_client.get_title_stats() if s.title_id}
+    for item in psn_client.get_library():
+        found = re.search(r"[A-Z]{4}\d{5}_00", item.get("productId") or "")
+        name = (item.get("gameMeta") or {}).get("name") or (item.get("titleMeta") or {}).get("name")
+        if found and found.group(0) in stat_ids and name:
+            assert _name_key(name) not in keys, name
+
+
+def test_game_details_groups_sum_to_totals():
+    game = unique_recent_game()
+    out = call("get_game_details", {"game_name": game.title_name})
+    assert "matches" not in out and "error" not in out, out
+    assert out["game"] == display_name(game.title_name)
+    groups = out["trophy_groups"]
+    assert groups and groups[0]["dlc"] is False
+    for k in ("platinum", "gold", "silver", "bronze"):
+        assert sum(g["earned"][k] for g in groups) == out["trophies_earned"][k], k
+        assert sum(g["total"][k] for g in groups) == out["trophies_total"][k], k
+    assert (len(groups) > 1) == bool(game.has_trophy_groups)
+
+
+def test_game_details_unknown_game():
+    out = call("get_game_details", {"game_name": "Zzqx Definitely Not A Game 9000"})
+    assert "error" in out and "web search" in out["error"]

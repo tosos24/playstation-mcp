@@ -13,8 +13,8 @@ from psnawp_api.core.psnawp_exceptions import (
 )
 
 import psn_client
-from tests.fakes import call, call_raw, raw_profile, trophy
-from tools.common import find_games, normalize
+from tests.fakes import at, call, call_raw, raw_profile, trophy
+from tools.common import display_name, find_games, normalize
 
 
 # ---------- normalize / find_games ----------
@@ -23,6 +23,45 @@ def test_normalize():
     assert normalize("Marvel's Spider-Man 2™") == "marvel s spider man 2"
     assert normalize(None) == ""
     assert normalize("  GOD of WAR® Ragnarök ") == "god of war ragnar k"
+
+
+@pytest.mark.parametrize("roman,digit", [("II", "2"), ("iii", "3"), ("IV", "4"), ("V", "5"), ("VI", "6"),
+                                         ("VII", "7"), ("VIII", "8"), ("IX", "9"), ("X", "10")])
+def test_normalize_roman_numerals(roman, digit):
+    assert normalize(f"Game {roman}") == f"game {digit}"
+    assert normalize(f"Game {roman}: Subtitle") == f"game {digit} subtitle"
+
+
+def test_normalize_roman_only_standalone_words():
+    assert normalize("I Am Bread") == "i am bread"
+    assert normalize("Vivid Xtreme Mix") == "vivid xtreme mix"
+    assert normalize("Final Fantasy VII Remake") == "final fantasy 7 remake"
+    assert normalize("Alan Wake II") == normalize("Alan Wake 2")
+
+
+def test_display_name():
+    assert display_name("EA SPORTS FC™ 26 Trophies") == "EA SPORTS FC™ 26"
+    assert display_name("Some Game trophies") == "Some Game"
+    assert display_name("Some Game TROPHIES") == "Some Game"
+    assert display_name("Trophies Galore") == "Trophies Galore"
+    assert display_name("Trophies") == "Trophies"
+    assert display_name("Plain Game") == "Plain Game"
+    assert display_name(None) == ""
+
+
+def test_alan_wake_2_finds_alan_wake_ii(psn):
+    psn.add("Alan Wake II", [trophy()])
+    psn.add("Alan Wake Remastered", [trophy()])
+    assert names(find_games("Alan Wake 2")) == ["Alan Wake II"]
+    assert names(find_games("alan wake ii")) == ["Alan Wake II"]
+
+
+def test_game_fields_drop_trophies_suffix(psn):
+    psn.add("EA SPORTS FC™ 26 Trophies", [trophy(earned=True, earned_at=at(1))])
+    out = call("get_trophies", {"game_name": "EA Sports FC 26", "status": "all"})
+    assert out["game"] == "EA SPORTS FC™ 26"
+    out = call("get_trophies", {"status": "earned", "sort_by": "recent"})
+    assert all(t["game"] == "EA SPORTS FC™ 26" for t in out["trophies"])
 
 
 def names(games):
