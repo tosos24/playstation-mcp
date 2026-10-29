@@ -58,7 +58,7 @@ def _sort(trophies: list[dict], sort_by: str) -> None:
     elif sort_by == "rarest":
         trophies.sort(key=lambda t: t["earn_rate"] if t["earn_rate"] is not None else 100)
     else:  # easiest: most players have it
-        trophies.sort(key=lambda t: t["earn_rate"] or 0, reverse=True)
+        trophies.sort(key=lambda t: t["earn_rate"] if t["earn_rate"] is not None else -1, reverse=True)
 
 
 def _games_by_last_trophy() -> list:

@@ -119,6 +119,13 @@ def test_rarest_with_zero_rate(psn):
     assert tnames(out)[-1] == "C"  # unknown rate goes last, after a real 0.0
 
 
+def test_easiest_puts_unknown_rate_after_zero(psn):
+    # Unknown rate listed first, so a stable sort can't hide a tie with 0.0.
+    psn.add("Zero", [trophy("C", earn_rate=None), trophy("A", earn_rate="0.0"), trophy("B", earn_rate="5.0")])
+    out = call("get_trophies", {"game_name": "Zero", "sort_by": "easiest"})
+    assert tnames(out) == ["B", "A", "C"]
+
+
 # ---------- filters ----------
 
 def test_exclude_dlc(one):
