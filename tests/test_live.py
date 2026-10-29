@@ -154,3 +154,66 @@ def test_game_details_groups_sum_to_totals():
 def test_game_details_unknown_game():
     out = call("get_game_details", {"game_name": "Zzqx Definitely Not A Game 9000"})
     assert "error" in out and "web search" in out["error"]
+
+
+# ---------- steps 3 and 4: friends and recap (about 10-25 more requests) ----------
+
+def no_secrets(out):
+    text = json.dumps(out)
+    assert "deviceId" not in text and "personalDetail" not in text
+
+
+@pytest.fixture(scope="module")
+def friends_out():
+    return call("list_friends")
+
+
+def test_list_friends_matches_friend_ids(friends_out):
+    out = friends_out
+    no_secrets(out)
+    assert out["count"] == len(psn_client.get_friend_ids()) == len(out["friends"])
+    assert all(f["online_id"] for f in out["friends"])
+    online = [f["status"] == "online" for f in out["friends"]]
+    assert online == sorted(online, reverse=True)
+    assert out["online_count"] == sum(online)
+    assert isinstance(out["friend_requests_received"], list)
+
+
+def test_get_player_first_friend(friends_out):
+    if not friends_out["friends"]:
+        pytest.skip("no friends")
+    name = friends_out["friends"][0]["online_id"]
+    out = call("get_player", {"name": name})
+    no_secrets(out)
+    assert out.get("is_friend") is True, "first friend not resolved as a friend"
+    assert out["online_id"] == name
+    if out["trophies"] != "private":
+        t = out["trophies"]
+        assert t["total"] == sum(t[k] for k in ("platinum", "gold", "silver", "bronze"))
+        assert len(out["recent_games"]) <= min(5, out["games_on_trophy_list"])
+
+
+def test_compare_overall_first_friend(friends_out):
+    if not friends_out["friends"]:
+        pytest.skip("no friends")
+    name = friends_out["friends"][0]["online_id"]
+    out = call("compare_with_player", {"name": name})
+    no_secrets(out)
+    if out.get("their_trophies") == "private":
+        pytest.skip("friend's trophies are private")
+    user = psn_client.get_psnawp().user(online_id=name)  # one request; titles below come from the cache
+    theirs = len(psn_client.get_player_trophy_titles(user))
+    assert out["shared_games_count"] <= min(len(psn_client.get_trophy_titles()), theirs)
+    assert len(out["shared_games"]) == min(out["shared_games_count"], 10)
+
+
+def test_recap_week_totals():
+    out = call("get_recap", {"period": "week"})
+    no_secrets(out)
+    t = out["trophies_earned"]
+    assert t["total"] == sum(g["trophies"] for g in out["trophies_by_game"])
+    assert t["total"] == sum(t[k] for k in ("platinum", "gold", "silver", "bronze"))
+    counts = [g["trophies"] for g in out["trophies_by_game"]]
+    assert counts == sorted(counts, reverse=True)
+    assert len(out["platinums_earned"]) == t["platinum"]
+    assert set(out["games_started"]) <= set(out["games_played"])
