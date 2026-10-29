@@ -11,7 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from psnawp_api import PSNAWP
-from psnawp_api.core.psnawp_exceptions import PSNAWPError
+from psnawp_api.core.psnawp_exceptions import PSNAWPBadRequestError, PSNAWPNotFoundError
 from psnawp_api.models.trophies import PlatformType
 from psnawp_api.utils.endpoints import API_PATH, BASE_PATH
 
@@ -154,14 +154,15 @@ def map_title_ids(title_ids: list[str]) -> dict[str, str | None]:
         batch = missing[i:i + TITLE_ID_BATCH]
         try:
             found = lookup(batch)
-        except PSNAWPError:
+        except PSNAWPBadRequestError:
             # One bad ID can fail the whole batch, so retry them one at a time.
+            # Other errors (rate limit, server, login) propagate, so nothing wrong gets cached.
             found = {}
             for tid in batch:
                 try:
                     found.update(lookup([tid]))
-                except PSNAWPError:
-                    pass
+                except (PSNAWPBadRequestError, PSNAWPNotFoundError):
+                    pass  # this ID has no trophy list
         for tid in batch:
             result[tid] = found.get(tid)
             _cache[f"title_map:{tid}"] = (time.time(), found.get(tid))

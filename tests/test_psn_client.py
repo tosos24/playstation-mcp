@@ -5,7 +5,8 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from psnawp_api.core.psnawp_exceptions import PSNAWPBadRequestError, PSNAWPTooManyRequestsError
+from psnawp_api.core.psnawp_exceptions import (
+    PSNAWPBadRequestError, PSNAWPNotFoundError, PSNAWPServerError, PSNAWPTooManyRequestsError)
 from psnawp_api.models.trophies import PlatformType
 
 import psn_client
@@ -221,8 +222,6 @@ def test_map_non_psn_errors_propagate(me, monkeypatch):
     assert "title_map:PPSA00001_00" not in psn_client._cache
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: a rate-limit (or other transient PSN) error during the title-ID lookup "
-                                       "is cached as 'no trophy list' (None) for a whole day")
 def test_map_transient_error_not_cached_as_no_trophy_list(me):
     me.mapping = {"PPSA00001_00": "NPWR1"}
     me.batch_error = None
@@ -242,6 +241,54 @@ def test_map_transient_error_not_cached_as_no_trophy_list(me):
     state["limited"] = False  # PSN recovers a minute later
     assert real_map_title_ids(["PPSA00001_00"]) == {"PPSA00001_00": "NPWR1"}
 
+
+
+def test_map_rate_limited_batch_is_not_retried_or_cached(me):
+    wanted = ids(5)
+    me.mapping = {t: "NP_" + t for t in wanted}
+    me.batch_error = PSNAWPTooManyRequestsError("rate limited")
+    with pytest.raises(PSNAWPTooManyRequestsError):
+        real_map_title_ids(wanted)
+    assert me.lookups == [wanted]  # one request, not six
+    assert not any(k.startswith("title_map:") for k in psn_client._cache)
+
+
+def test_map_server_error_in_retry_propagates_but_earlier_batches_stay_cached(me):
+    wanted = ids(7)
+    me.mapping = {t: "NP_" + t for t in wanted}
+    original = me.trophy_titles_for_title
+
+    def flaky(title_ids):
+        if title_ids == wanted[5:]:
+            raise PSNAWPBadRequestError("bad id")
+        if title_ids == [wanted[6]]:
+            raise PSNAWPServerError("down")
+        return original(title_ids)
+
+    me.trophy_titles_for_title = flaky
+    with pytest.raises(PSNAWPServerError):
+        real_map_title_ids(wanted)
+    for t in wanted[:5]:
+        assert psn_client._cache[f"title_map:{t}"][1] == "NP_" + t
+    for t in wanted[5:]:
+        assert f"title_map:{t}" not in psn_client._cache
+
+
+def test_map_not_found_for_single_id_means_no_trophy_list(me):
+    wanted = ids(2)
+    me.mapping = {t: "NP_" + t for t in wanted}
+    original = me.trophy_titles_for_title
+
+    def picky(title_ids):
+        if len(title_ids) > 1:
+            raise PSNAWPBadRequestError("bad id")
+        if title_ids == [wanted[1]]:
+            raise PSNAWPNotFoundError("no such title")
+        return original(title_ids)
+
+    me.trophy_titles_for_title = picky
+    assert real_map_title_ids(wanted) == {wanted[0]: "NP_" + wanted[0], wanted[1]: None}
+    assert psn_client._cache[f"title_map:{wanted[1]}"][1] is None
 
 @pytest.mark.xfail(strict=True, reason="BUG (minor): map_title_ids bypasses the per-key locks, so the startup warm-up "
                                        "and a first tool call look the same title IDs up twice")
