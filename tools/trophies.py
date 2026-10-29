@@ -93,7 +93,8 @@ def register(mcp):
         to pick between same-named lists, e.g. "Ghost Game PS5" (ps3, ps4, ps5, vita).
 
         sort_by: "easiest" = most players have it, "rarest" = fewest players have it,
-        "recent" = newest earned first. Default: "recent" for earned, "easiest" otherwise.
+        "recent" = newest earned first (with status="unearned" there are no dates, so it acts
+        as "easiest"). Default: "recent" for earned, "easiest" otherwise.
 
         Without game_name, only my most recently active games are searched (see "note"
         and "games_searched" in the result). For whole-library rankings of games, use
@@ -103,6 +104,9 @@ def register(mcp):
         earn_rate (% of all players who have it), earned, earned_at (UTC), hidden, dlc.
         """
         sort_by = sort_by or ("recent" if status == "earned" else "easiest")
+        # Unearned trophies have no earned date, so "recent" can't order them.
+        if status == "unearned" and sort_by == "recent":
+            sort_by = "easiest"
         limit = max(1, limit)
 
         # One game: everything comes from a single (cached) lookup.

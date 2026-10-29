@@ -106,6 +106,17 @@ def test_sort_recent_earned_first_newest_first(one):
     assert all(t["earned_at"] is None for t in out["trophies"][3:])
 
 
+def test_unearned_recent_acts_as_easiest(one):
+    assert tnames(get(sort_by="recent")) == tnames(get(sort_by="easiest")) == ["Gold Rush", "Plat", "DLC Boss",
+                                                                              "No Rate"]
+
+
+def test_cross_game_unearned_recent_acts_as_easiest(psn):
+    many(psn)
+    rates = [t["earn_rate"] for t in call("get_trophies", {"sort_by": "recent"})["trophies"]]
+    assert rates == sorted(rates, reverse=True)
+
+
 def test_sort_easiest_on_earned(one):
     assert tnames(get(status="earned", sort_by="easiest")) == ["Easy Start", "DLC Walk", "Secret!"]
 
