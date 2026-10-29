@@ -106,6 +106,17 @@ def test_sort_recent_earned_first_newest_first(one):
     assert all(t["earned_at"] is None for t in out["trophies"][3:])
 
 
+def test_unearned_recent_acts_as_easiest(one):
+    assert tnames(get(sort_by="recent")) == tnames(get(sort_by="easiest")) == ["Gold Rush", "Plat", "DLC Boss",
+                                                                              "No Rate"]
+
+
+def test_cross_game_unearned_recent_acts_as_easiest(psn):
+    many(psn)
+    rates = [t["earn_rate"] for t in call("get_trophies", {"sort_by": "recent"})["trophies"]]
+    assert rates == sorted(rates, reverse=True)
+
+
 def test_sort_easiest_on_earned(one):
     assert tnames(get(status="earned", sort_by="easiest")) == ["Easy Start", "DLC Walk", "Secret!"]
 
@@ -117,6 +128,13 @@ def test_rarest_with_zero_rate(psn):
     out = call("get_trophies", {"game_name": "Zero", "sort_by": "easiest"})
     assert tnames(out)[0] == "B"
     assert tnames(out)[-1] == "C"  # unknown rate goes last, after a real 0.0
+
+
+def test_easiest_puts_unknown_rate_after_zero(psn):
+    # Unknown rate listed first, so a stable sort can't hide a tie with 0.0.
+    psn.add("Zero", [trophy("C", earn_rate=None), trophy("A", earn_rate="0.0"), trophy("B", earn_rate="5.0")])
+    out = call("get_trophies", {"game_name": "Zero", "sort_by": "easiest"})
+    assert tnames(out) == ["B", "A", "C"]
 
 
 # ---------- filters ----------

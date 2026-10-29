@@ -4,6 +4,7 @@ import difflib
 import functools
 import re
 
+import requests
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from psnawp_api.core.psnawp_exceptions import (
@@ -38,7 +39,7 @@ def _friendly_message(exc: PSNAWPError) -> str:
 
 
 def read_only_tool(mcp):
-    """Like @mcp.tool(), but marks the tool read-only and turns PSN errors into clear messages."""
+    """Like @mcp.tool(), but marks the tool read-only and turns PSN, login and network errors into clear messages."""
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
@@ -46,6 +47,10 @@ def read_only_tool(mcp):
                 return fn(*args, **kwargs)
             except PSNAWPError as exc:
                 raise ToolError(_friendly_message(exc)) from exc
+            except requests.exceptions.RequestException as exc:
+                raise ToolError("Couldn't reach PSN (network error). Try again shortly.") from exc
+            except RuntimeError as exc:  # e.g. "NPSSO is missing..." from the login
+                raise ToolError(str(exc)) from exc
         return mcp.tool(annotations=READ_ONLY)(wrapper)
     return decorator
 
@@ -65,10 +70,28 @@ def display_name(title_name: str) -> str:
     return re.sub(r"\s+Trophies$", "", title_name or "", flags=re.IGNORECASE)
 
 
+# Consoles Claude can add to game_name ("Ghost Game PS5") to pick between same-named PS4 and PS5 lists.
+CONSOLES = {"ps3": "PS3", "ps4": "PS4", "ps5": "PS5", "vita": "PSVITA", "psvita": "PSVITA"}
+
+
 def find_games(game_name: str) -> list:
-    """Find games on my list matching a name: exact first, then partial, then close spellings."""
-    titles = get_trophy_titles()
+    """Find games on my list matching a name: exact first, then partial, then close spellings.
+
+    A console at the end ("Ghost Game PS5", "Ghost Game (PS4)") keeps only that console's games.
+    """
     wanted = normalize(game_name)
+    rest, _, last = wanted.rpartition(" ")
+    console = CONSOLES.get(last)
+    if console and rest:
+        on_console = [t for t in _match(rest) if console in {p.value for p in t.title_platform}]
+        if on_console:
+            return on_console
+    return _match(wanted)
+
+
+def _match(wanted: str) -> list:
+    """Games whose normalized name matches `wanted` (already normalized)."""
+    titles = get_trophy_titles()
     by_name = {}
     for t in titles:
         by_name.setdefault(normalize(t.title_name), []).append(t)
@@ -98,10 +121,14 @@ def game_summary(t) -> dict:
 
 def resolve_one_game(game_name: str):
     """Return (game, None) for a single match, or (None, reply) where reply is an error or a list of matches."""
+    # Only symbols (e.g. "™") would match every game, so ask for a real name instead.
+    if not normalize(game_name):
+        return None, {"error": f"'{game_name}' isn't a game name. Ask which game they mean."}
     games = find_games(game_name)
     if not games:
         return None, {"error": f"No game on my trophy list matches '{game_name}'."}
     if len(games) > 1:
         return None, {"matches": [game_summary(t) for t in games],
-                      "note": "Several games match. Ask which one, then call again with its exact name."}
+                      "note": ("Several games match. Ask which one, then call again with the exact name, adding the "
+                               "console (e.g. 'Ghost Game PS5') if two have the same name.")}
     return games[0], None

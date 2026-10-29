@@ -1,4 +1,5 @@
 import pytest
+import requests
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from psnawp_api.core.psnawp_exceptions import (
     PSNAWPAuthenticationError,
@@ -83,18 +84,36 @@ def test_unknown_game_returns_error(library):
     assert "zzzz qqqq" in out["error"]
 
 
+@pytest.mark.parametrize("name", ["™", " ®: ", "!!!"])
+def test_symbols_only_game_name_asks_for_a_name(library, name):
+    out = call("get_trophies", {"game_name": name})
+    assert set(out) == {"error"}
+    assert "game name" in out["error"]
+    assert library.fetched == []
+
+
 def test_exact_name_from_matches_resolves(library):
     out = call("get_trophies", {"game_name": "Marvel's Spider-Man"})
     assert out["game"] == "Marvel's Spider-Man"
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: two games with the same name (e.g. PS4 + PS5 lists) can never "
-                                      "be picked: the exact name always returns 'matches' again")
 def test_same_name_on_two_platforms_is_reachable(psn):
-    psn.add("Ghost Game", [trophy()], platforms=("PS4",))
-    psn.add("Ghost Game", [trophy()], platforms=("PS5",))
+    psn.add("Ghost Game", [trophy("old")], platforms=("PS4",))
+    psn.add("Ghost Game", [trophy("new")], platforms=("PS5",))
     out = call("get_trophies", {"game_name": "Ghost Game"})
-    assert "matches" not in out
+    assert len(out["matches"]) == 2
+    assert "console" in out["note"]
+    for hint, plat, name in [("Ghost Game PS5", "PS5", "new"), ("ghost game (PS4)", "PS4", "old")]:
+        out = call("get_trophies", {"game_name": hint})
+        assert "matches" not in out
+        assert out["platforms"] == [plat]
+        assert out["trophies"][0]["name"] == name
+
+
+def test_console_hint_ignored_when_it_matches_nothing(psn):
+    psn.add("Ghost Game", [trophy()], platforms=("PS4",))
+    out = call("get_trophies", {"game_name": "Ghost Game PS5"})
+    assert out["game"] == "Ghost Game"
 
 
 # ---------- error mapping ----------
@@ -147,6 +166,26 @@ def test_plain_text_psn_error(psn):
     with pytest.raises(ToolError) as info:
         call_raw("get_trophies", {"game_name": "x"})
     assert "PSN request failed: Bad gateway" in str(info.value)
+
+
+def test_missing_npsso_message_reaches_claude(monkeypatch):
+    # No fake PSN: the real login runs and finds no NPSSO.
+    monkeypatch.delenv("NPSSO", raising=False)
+    monkeypatch.setattr(psn_client, "_me", None)
+    with pytest.raises(ToolError) as info:
+        call_raw("get_trophies", {"game_name": "x"})
+    assert not isinstance(info.value, UnexpectedToolError)
+    assert "NPSSO is missing" in str(info.value)
+
+
+@pytest.mark.parametrize("exc", [requests.exceptions.ConnectionError("boom"), requests.exceptions.Timeout()])
+def test_network_error_message(psn, exc):
+    raise_in(psn, "titles", exc)
+    with pytest.raises(ToolError) as info:
+        call_raw("get_trophies", {"game_name": "x"})
+    assert not isinstance(info.value, UnexpectedToolError)
+    assert "Couldn't reach PSN" in str(info.value)
+    assert "Try again" in str(info.value)
 
 
 def test_error_while_fetching_trophies(psn):

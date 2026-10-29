@@ -140,6 +140,28 @@ def test_capped_at_max_recent_scan_games(psn):
     assert out["count"] == 3 * MAX_RECENT_SCAN_GAMES
     first_ten = psn.titles[:MAX_RECENT_SCAN_GAMES]
     assert as_rows(out) == brute_force(psn, 500, games=first_ten)
+    assert f"Only searched my {MAX_RECENT_SCAN_GAMES} most recently" in out["note"]
+
+
+def test_no_note_when_not_capped(psn):
+    # Stopped by the early-stop rule.
+    staircase(psn, MAX_RECENT_SCAN_GAMES + 4)
+    assert "note" not in recent(limit=1)
+
+
+def test_no_note_when_games_run_out(psn):
+    staircase(psn, MAX_RECENT_SCAN_GAMES)
+    out = recent(limit=500)
+    assert len(psn.fetched) == MAX_RECENT_SCAN_GAMES
+    assert "note" not in out
+
+
+def test_no_note_when_early_stop_lands_on_cap(psn):
+    # The limit fills exactly at the cap and the next game is older: early stop, not the cap.
+    staircase(psn, MAX_RECENT_SCAN_GAMES + 1)
+    out = recent(limit=3 * MAX_RECENT_SCAN_GAMES)
+    assert len(psn.fetched) == MAX_RECENT_SCAN_GAMES
+    assert "note" not in out
 
 
 def test_more_than_cap_but_latest_still_exact(psn):
@@ -191,10 +213,11 @@ def test_recent_output_shape(psn):
     assert t["earned"] is True
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: an earned trophy with no earned_date_time crashes the early-stop "
-                                      "(datetime.fromisoformat(None)) instead of being sorted last")
 def test_earned_trophy_without_date_does_not_crash(psn):
     psn.add("Weird", [trophy("dateless", earned=True, earned_at=None)], last_updated=at(0))
     psn.add("Other", [trophy("o", earned=True, earned_at=at(-1))])
     out = recent(limit=1)
     assert out["count"] >= 1
+    # The dated trophy wins; the dateless one sorts last.
+    assert [t["name"] for t in out["trophies"]] == ["o"]
+    assert [t["name"] for t in recent(limit=5)["trophies"]] == ["o", "dateless"]
