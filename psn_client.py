@@ -132,40 +132,52 @@ def get_trophy_groups(title):
 # PSN rejects more than 5 title IDs per lookup.
 TITLE_ID_BATCH = 5
 
+# One lock for all title-ID lookups, so the warm-up and a tool call never look up the same IDs twice.
+_title_map_lock = threading.Lock()
+
 
 def map_title_ids(title_ids: list[str]) -> dict[str, str | None]:
     """Map play-time title IDs (e.g. PPSA02571_00) to trophy list IDs. Cached per ID for a day.
 
     Titles without a trophy list (apps like Netflix) map to None.
     """
-    result, missing = {}, []
-    for tid in dict.fromkeys(title_ids):
-        hit = _cache.get(f"title_map:{tid}")
-        if hit and time.time() - hit[0] < DAY:
-            result[tid] = hit[1]
-        else:
-            missing.append(tid)
+    def split_cached(tids):
+        hits, misses = {}, []
+        for tid in tids:
+            hit = _cache.get(f"title_map:{tid}")
+            if hit and time.time() - hit[0] < DAY:
+                hits[tid] = hit[1]
+            else:
+                misses.append(tid)
+        return hits, misses
 
     def lookup(batch):
         return {t.np_title_id: t.np_communication_id
                 for t in get_me().trophy_titles_for_title(title_ids=batch)}
 
-    for i in range(0, len(missing), TITLE_ID_BATCH):
-        batch = missing[i:i + TITLE_ID_BATCH]
-        try:
-            found = lookup(batch)
-        except PSNAWPBadRequestError:
-            # One bad ID can fail the whole batch, so retry them one at a time.
-            # Other errors (rate limit, server, login) propagate, so nothing wrong gets cached.
-            found = {}
+    result, missing = split_cached(dict.fromkeys(title_ids))
+    if not missing:
+        return result
+    with _title_map_lock:
+        # Someone else may have looked some of them up while we waited for the lock.
+        hits, missing = split_cached(missing)
+        result.update(hits)
+        for i in range(0, len(missing), TITLE_ID_BATCH):
+            batch = missing[i:i + TITLE_ID_BATCH]
+            try:
+                found = lookup(batch)
+            except PSNAWPBadRequestError:
+                # One bad ID can fail the whole batch, so retry them one at a time.
+                # Other errors (rate limit, server, login) propagate, so nothing wrong gets cached.
+                found = {}
+                for tid in batch:
+                    try:
+                        found.update(lookup([tid]))
+                    except (PSNAWPBadRequestError, PSNAWPNotFoundError):
+                        pass  # this ID has no trophy list
             for tid in batch:
-                try:
-                    found.update(lookup([tid]))
-                except (PSNAWPBadRequestError, PSNAWPNotFoundError):
-                    pass  # this ID has no trophy list
-        for tid in batch:
-            result[tid] = found.get(tid)
-            _cache[f"title_map:{tid}"] = (time.time(), found.get(tid))
+                result[tid] = found.get(tid)
+                _cache[f"title_map:{tid}"] = (time.time(), found.get(tid))
     return result
 
 

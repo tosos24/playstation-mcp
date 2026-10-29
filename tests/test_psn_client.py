@@ -290,8 +290,6 @@ def test_map_not_found_for_single_id_means_no_trophy_list(me):
     assert real_map_title_ids(wanted) == {wanted[0]: "NP_" + wanted[0], wanted[1]: None}
     assert psn_client._cache[f"title_map:{wanted[1]}"][1] is None
 
-@pytest.mark.xfail(strict=True, reason="BUG (minor): map_title_ids bypasses the per-key locks, so the startup warm-up "
-                                       "and a first tool call look the same title IDs up twice")
 def test_map_concurrent_callers_look_up_once(me):
     wanted = ids(3)
     me.mapping = {t: "NP_" + t for t in wanted}
