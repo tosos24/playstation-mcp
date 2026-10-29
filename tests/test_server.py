@@ -63,8 +63,10 @@ def test_warm_cache_fills_the_cache(psn, monkeypatch):
             calls.append(name)
             return orig()
         monkeypatch.setattr(psn_client, name, wrapped)
+    monkeypatch.setattr(psn_client, "get_friend_ids", lambda: calls.append("get_friend_ids") or ["a1"])
+    monkeypatch.setattr(psn_client, "get_profiles", lambda ids: calls.append(("get_profiles", ids)) or {})
     server.warm_cache()
-    assert calls == ["get_profile", "get_devices", "get_library"]
+    assert calls == ["get_profile", "get_devices", "get_library", "get_friend_ids", ("get_profiles", ["a1"])]
 
 
 def test_warm_cache_swallows_failures(psn, caplog):
