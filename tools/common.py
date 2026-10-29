@@ -65,10 +65,28 @@ def display_name(title_name: str) -> str:
     return re.sub(r"\s+Trophies$", "", title_name or "", flags=re.IGNORECASE)
 
 
+# Consoles Claude can add to game_name ("Ghost Game PS5") to pick between same-named PS4 and PS5 lists.
+CONSOLES = {"ps3": "PS3", "ps4": "PS4", "ps5": "PS5", "vita": "PSVITA", "psvita": "PSVITA"}
+
+
 def find_games(game_name: str) -> list:
-    """Find games on my list matching a name: exact first, then partial, then close spellings."""
-    titles = get_trophy_titles()
+    """Find games on my list matching a name: exact first, then partial, then close spellings.
+
+    A console at the end ("Ghost Game PS5", "Ghost Game (PS4)") keeps only that console's games.
+    """
     wanted = normalize(game_name)
+    rest, _, last = wanted.rpartition(" ")
+    console = CONSOLES.get(last)
+    if console and rest:
+        on_console = [t for t in _match(rest) if console in {p.value for p in t.title_platform}]
+        if on_console:
+            return on_console
+    return _match(wanted)
+
+
+def _match(wanted: str) -> list:
+    """Games whose normalized name matches `wanted` (already normalized)."""
+    titles = get_trophy_titles()
     by_name = {}
     for t in titles:
         by_name.setdefault(normalize(t.title_name), []).append(t)
@@ -103,5 +121,6 @@ def resolve_one_game(game_name: str):
         return None, {"error": f"No game on my trophy list matches '{game_name}'."}
     if len(games) > 1:
         return None, {"matches": [game_summary(t) for t in games],
-                      "note": "Several games match. Ask which one, then call again with its exact name."}
+                      "note": ("Several games match. Ask which one, then call again with the exact name, adding the "
+                               "console (e.g. 'Ghost Game PS5') if two have the same name.")}
     return games[0], None

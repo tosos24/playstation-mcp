@@ -89,7 +89,8 @@ def register(mcp):
         - "My rarest trophies?" -> status="earned", sort_by="rarest"
 
         game_name can be loose ("spiderman 2"). If several games match, this returns
-        "matches" instead: ask which one, then call again with the exact name.
+        "matches" instead: ask which one, then call again with the exact name. Add the console
+        to pick between same-named lists, e.g. "Ghost Game PS5" (ps3, ps4, ps5, vita).
 
         sort_by: "easiest" = most players have it, "rarest" = fewest players have it,
         "recent" = newest earned first. Default: "recent" for earned, "easiest" otherwise.

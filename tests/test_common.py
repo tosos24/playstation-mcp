@@ -88,13 +88,23 @@ def test_exact_name_from_matches_resolves(library):
     assert out["game"] == "Marvel's Spider-Man"
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: two games with the same name (e.g. PS4 + PS5 lists) can never "
-                                      "be picked: the exact name always returns 'matches' again")
 def test_same_name_on_two_platforms_is_reachable(psn):
-    psn.add("Ghost Game", [trophy()], platforms=("PS4",))
-    psn.add("Ghost Game", [trophy()], platforms=("PS5",))
+    psn.add("Ghost Game", [trophy("old")], platforms=("PS4",))
+    psn.add("Ghost Game", [trophy("new")], platforms=("PS5",))
     out = call("get_trophies", {"game_name": "Ghost Game"})
-    assert "matches" not in out
+    assert len(out["matches"]) == 2
+    assert "console" in out["note"]
+    for hint, plat, name in [("Ghost Game PS5", "PS5", "new"), ("ghost game (PS4)", "PS4", "old")]:
+        out = call("get_trophies", {"game_name": hint})
+        assert "matches" not in out
+        assert out["platforms"] == [plat]
+        assert out["trophies"][0]["name"] == name
+
+
+def test_console_hint_ignored_when_it_matches_nothing(psn):
+    psn.add("Ghost Game", [trophy()], platforms=("PS4",))
+    out = call("get_trophies", {"game_name": "Ghost Game PS5"})
+    assert out["game"] == "Ghost Game"
 
 
 # ---------- error mapping ----------
