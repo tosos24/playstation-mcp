@@ -217,6 +217,8 @@ def register(mcp):
         - "My completed games / platinums?" -> filter="completed" or "platinum_earned"
 
         filter defaults to "unfinished" when sorting by trophy_progress, otherwise "all".
+        "unfinished" = under 100%, plus played games with no trophy list (listed last by trophy_progress);
+        "completed" and "platinum_earned" only cover games on my trophy list.
         "abandoned" = under 100% and not played for 90+ days. "never_played" lists games I own with
         no play time at all (sort_by is ignored; may include PS Plus games I claimed).
 
@@ -237,7 +239,7 @@ def register(mcp):
         now = datetime.now(timezone.utc)
         keep = {
             "all": lambda r: True,
-            "unfinished": lambda r: r["title"] is not None and _progress(r) < 100,
+            "unfinished": lambda r: r["title"] is None or _progress(r) < 100,  # no trophies = not finished
             "completed": lambda r: r["title"] is not None and _progress(r) >= 100,
             "platinum_earned": lambda r: r["title"] is not None and bool(r["title"].earned_trophies.platinum),
             "abandoned": lambda r: _is_abandoned(r, now),

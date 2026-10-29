@@ -38,7 +38,9 @@ def total(ts):
 def test_progress_sorted_and_unfinished():
     rows = call("list_games", {"limit": 10})["games"]
     assert 0 < len(rows) <= 10
-    pct = [r["trophy_progress_percent"] for r in rows]
+    # Played games with no trophy list (null progress) count as unfinished and come last.
+    pct = [r["trophy_progress_percent"] for r in rows if r["trophy_progress_percent"] is not None]
+    assert all(r["trophy_progress_percent"] is None for r in rows[len(pct):])
     assert pct == sorted(pct, reverse=True)
     assert all(p < 100 for p in pct)
 

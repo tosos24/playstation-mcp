@@ -305,7 +305,7 @@ def ranked(psn):
 def test_sort_trophy_progress_default_unfinished(ranked):
     out = lg()
     assert out["sort_by"] == "trophy_progress" and out["filter"] == "unfinished"
-    assert names(out) == ["A Game", "B Game", "D Game"]
+    assert names(out) == ["A Game", "B Game", "D Game", "No List"]  # no trophy list = unfinished, listed last
     assert "note" not in out and "left_out" not in out
 
 
@@ -369,9 +369,20 @@ def test_filter_completed(ranked):
     assert names(out) == ["C Game"]
 
 
-def test_filter_unfinished_excludes_no_trophy_list(ranked):
+def test_filter_unfinished_includes_no_trophy_list(ranked):
     out = lg(filter="unfinished", sort_by="playtime")
-    assert names(out) == ["B Game", "A Game", "D Game"]
+    assert names(out) == ["B Game", "A Game", "No List", "D Game"]
+
+
+def test_most_hours_never_finished_includes_fortnite(psn):
+    psn.add("Done Game", done(2))
+    psn.play("Done Game", 500)
+    psn.play("Fortnite", 300, platform="PS5")
+    psn.add("Half Game", done(1) + todo(1))
+    psn.play("Half Game", 100)
+    assert names(lg(sort_by="playtime", filter="unfinished")) == ["Fortnite", "Half Game"]
+    assert names(lg(filter="completed")) == ["Done Game"]
+    assert lg(filter="platinum_earned")["count"] == 0
 
 
 def test_filter_all_count(ranked):
