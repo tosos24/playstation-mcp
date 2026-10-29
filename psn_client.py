@@ -11,7 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from psnawp_api import PSNAWP
-from psnawp_api.core.psnawp_exceptions import PSNAWPBadRequestError, PSNAWPNotFoundError
+from psnawp_api.core.psnawp_exceptions import PSNAWPBadRequestError, PSNAWPError, PSNAWPNotFoundError
 from psnawp_api.models.trophies import PlatformType
 from psnawp_api.utils.endpoints import API_PATH, BASE_PATH
 
@@ -205,6 +205,14 @@ def get_friend_request_ids() -> list[str]:
     ])
 
 
+def _one_profile(account_id: str) -> dict:
+    """One account's basic profile, or {} if PSN can't give it (e.g. a deleted account)."""
+    try:
+        return _profile_api(API_PATH["profiles"].format(account_id=account_id))
+    except PSNAWPError:
+        return {}
+
+
 def get_profiles(account_ids: list[str]) -> dict[str, dict]:
     """Basic profiles (onlineId, aboutMe, isPlus, ...) for many accounts, batched. Cached per account for an hour."""
     result, missing = {}, []
@@ -220,10 +228,11 @@ def get_profiles(account_ids: list[str]) -> dict[str, dict]:
         if len(profiles) != len(batch):
             # The batch answer has no account IDs, only the same order. If the counts don't match,
             # fall back to one request per account rather than risk mixing people up.
-            profiles = [_profile_api(API_PATH["profiles"].format(account_id=aid)) for aid in batch]
+            profiles = [_one_profile(aid) for aid in batch]
         for aid, prof in zip(batch, profiles):
             result[aid] = prof
-            _cache[f"profile:{aid}"] = (time.time(), prof)
+            if prof:  # an account PSN couldn't answer for is asked about again next time
+                _cache[f"profile:{aid}"] = (time.time(), prof)
     return result
 
 

@@ -157,6 +157,46 @@ def test_profiles_missing_profiles_key_falls_back(monkeypatch):
     assert calls == ["/profiles", "/z/profiles"]
 
 
+class OneBadAccount(ProfileAPI):
+    """Batch answers come back short, and account "bad" fails on its own (deleted or invalid)."""
+
+    def __init__(self):
+        super().__init__(drop=1)
+
+    def __call__(self, path, **params):
+        if path == "/bad/profiles":
+            self.calls.append((path, params))
+            raise PSNAWPNotFoundError("account does not exist")
+        return super().__call__(path, **params)
+
+
+def test_profiles_fallback_skips_a_bad_account(monkeypatch):
+    api = OneBadAccount()
+    monkeypatch.setattr(psn_client, "_profile_api", api)
+    out = real["get_profiles"](["a", "bad", "c"])
+    assert out == {"a": {"onlineId": "single-a"}, "bad": {}, "c": {"onlineId": "single-c"}}
+    # The empty answer isn't cached, so the bad account is asked about again next time.
+    assert "profile:bad" not in psn_client._cache
+    assert {"profile:a", "profile:c"} <= set(psn_client._cache)
+    api.calls.clear()
+    real["get_profiles"](["a", "bad"])
+    assert api.calls == [("/profiles", {"accountIds": "bad"}), ("/bad/profiles", {})]
+
+
+def test_list_friends_works_with_one_bad_account(monkeypatch):
+    from tests.fakes import call
+    from tools import friends as friends_mod
+
+    monkeypatch.setattr(psn_client, "_profile_api", OneBadAccount())
+    monkeypatch.setattr(friends_mod, "get_friend_ids", lambda: ["a", "bad", "c"])
+    monkeypatch.setattr(friends_mod, "get_friend_request_ids", lambda: [])
+    monkeypatch.setattr(friends_mod, "get_profiles", real["get_profiles"])
+    monkeypatch.setattr(friends_mod, "get_presences", lambda ids: {})
+    out = call("list_friends")
+    assert out["count"] == 3  # the bad account is kept, so the count stays honest
+    assert sorted(f["online_id"] or "" for f in out["friends"]) == ["", "single-a", "single-c"]
+
+
 def test_profiles_cached_per_account_for_an_hour(api):
     real["get_profiles"](["a", "b"])
     assert set(k for k in psn_client._cache if k.startswith("profile:")) == {"profile:a", "profile:b"}
