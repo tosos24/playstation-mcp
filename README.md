@@ -31,10 +31,19 @@ tests after each step, and `ps-bug-fixer` fixes what it finds.
 
 ## Tools
 All tools are read-only.
-- `get_trophy_progress(limit, include_completed)`: games by trophy %, highest first
+- `list_games(sort_by, filter, limit)`: rank games by trophy %, play time, recency or play count;
+  filter unfinished, completed, platinum earned, abandoned (90+ days) or never played
+- `get_game_details(game_name)`: one game's hours, play count and base-game vs DLC trophy progress
 - `get_trophies(game_name?, status, sort_by, search?, include_dlc, limit)`: individual trophies:
   missing, latest earned, rarest, or one by name ("when did I get the platinum in X?")
 - `get_my_profile()`: PSN level, trophy totals, PS Plus, consoles
+- `list_friends(online_only)`: friends, who's online and what they're playing, friend requests
+- `get_player(name)`: a friend's (or any player's) profile, level and recent games
+- `compare_with_player(name, game_name?)`: compare trophies overall or for one game
+- `get_recap(period)`: trophies earned, games played and started in the last week, month or this year
+
+Game names can be loose ("spiderman 2", "alan wake 2"); add the console ("... PS5") to pick between
+same-named PS4 and PS5 trophy lists.
 
 ## Adding a feature
 Create `tools/<feature>.py` with a `register(mcp)` function, then add one import and one

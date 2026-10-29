@@ -16,7 +16,7 @@ from mcp.server.mcpserver import MCPServer
 from starlette.responses import PlainTextResponse
 
 import psn_client
-from tools import friends, games, profile, trophies
+from tools import friends, games, profile, recap, trophies
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -30,6 +30,7 @@ INSTRUCTIONS = """Tools for reading my own PlayStation Network data. All tools a
 - My friends, who's online and what they're playing, friend requests: list_friends.
 - Another player's profile, level and recent games: get_player.
 - Comparing my trophies with another player (overall or for one game): compare_with_player.
+- What I did in the last week / month / this year (trophies earned, games played): get_recap.
 If a tool returns "matches", ask me which game I meant, then call again with that exact name.
 For tips on how to earn a trophy, use web search."""
 
@@ -40,6 +41,7 @@ games.register(mcp)
 trophies.register(mcp)
 profile.register(mcp)
 friends.register(mcp)
+recap.register(mcp)
 
 
 @mcp.custom_route("/health", methods=["GET"])
