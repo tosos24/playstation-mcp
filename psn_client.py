@@ -11,7 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from psnawp_api import PSNAWP
-from psnawp_api.core.psnawp_exceptions import PSNAWPBadRequestError, PSNAWPError, PSNAWPNotFoundError
+from psnawp_api.core.psnawp_exceptions import PSNAWPBadRequestError, PSNAWPNotFoundError
 from psnawp_api.models.trophies import PlatformType
 from psnawp_api.utils.endpoints import API_PATH, BASE_PATH
 
@@ -206,10 +206,13 @@ def get_friend_request_ids() -> list[str]:
 
 
 def _one_profile(account_id: str) -> dict:
-    """One account's basic profile, or {} if PSN can't give it (e.g. a deleted account)."""
+    """One account's basic profile, or {} if PSN says it doesn't exist (e.g. a deleted account).
+
+    Other errors (rate limit, server, login) propagate, so they're reported instead of hidden.
+    """
     try:
         return _profile_api(API_PATH["profiles"].format(account_id=account_id))
-    except PSNAWPError:
+    except (PSNAWPBadRequestError, PSNAWPNotFoundError):
         return {}
 
 

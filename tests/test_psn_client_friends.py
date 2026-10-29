@@ -4,7 +4,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from psnawp_api.core.psnawp_exceptions import PSNAWPNotFoundError
+from psnawp_api.core.psnawp_exceptions import PSNAWPNotFoundError, PSNAWPTooManyRequestsError
 from psnawp_api.models.trophies import PlatformType
 
 import psn_client
@@ -181,6 +181,22 @@ def test_profiles_fallback_skips_a_bad_account(monkeypatch):
     api.calls.clear()
     real["get_profiles"](["a", "bad"])
     assert api.calls == [("/profiles", {"accountIds": "bad"}), ("/bad/profiles", {})]
+
+
+class RateLimitedAccount(OneBadAccount):
+    """Like OneBadAccount, but the single lookup hits PSN's rate limit instead."""
+
+    def __call__(self, path, **params):
+        if path == "/bad/profiles":
+            raise PSNAWPTooManyRequestsError("slow down")
+        return super().__call__(path, **params)
+
+
+def test_profiles_fallback_rate_limit_propagates(monkeypatch):
+    monkeypatch.setattr(psn_client, "_profile_api", RateLimitedAccount())
+    with pytest.raises(PSNAWPTooManyRequestsError):
+        real["get_profiles"](["a", "bad", "c"])
+    assert "profile:bad" not in psn_client._cache
 
 
 def test_list_friends_works_with_one_bad_account(monkeypatch):
