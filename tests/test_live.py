@@ -8,11 +8,9 @@ import re
 
 import pytest
 
-from tools.common import display_name
-
 import psn_client
 from tests.fakes import call, call_list
-from tools.common import normalize
+from tools.common import display_name, normalize
 
 pytestmark = pytest.mark.live
 
