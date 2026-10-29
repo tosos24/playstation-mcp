@@ -8,11 +8,13 @@ import json
 from datetime import datetime, timedelta, timezone
 from itertools import count
 
+from psnawp_api.core.psnawp_exceptions import PSNAWPForbiddenError, PSNAWPNotFoundError
 from psnawp_api.models.title_stats import PlatformCategory, TitleStats
 from psnawp_api.models.trophies import PlatformType
 from psnawp_api.models.trophies.trophy import TrophyWithProgress
 from psnawp_api.models.trophies.trophy_constants import TrophySet, TrophyType
 from psnawp_api.models.trophies.trophy_group import TrophyGroupsSummary, TrophyGroupSummaryWithProgress
+from psnawp_api.models.trophies.trophy_summary import TrophySummary
 from psnawp_api.models.trophies.trophy_titles import TrophyTitle
 
 BASE = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -118,6 +120,18 @@ class FakePSN:
         self.groups = {}  # np_communication_id -> TrophyGroupsSummary
         self.title_map = {}  # play-time title ID -> np_communication_id
         self.mapped = []  # title-ID lists passed to map_title_ids
+        # Step 3: friends and other players.
+        self.friend_ids = []  # my friends' account IDs, in PSN's order
+        self.request_ids = []  # account IDs that sent me a friend request
+        self.profiles = {}  # account ID -> raw basic profile
+        self.presences = {}  # account ID -> raw basic presence (missing = hidden)
+        self.players = {}  # account ID -> FakeUser (friends and others)
+        self.summaries = {}  # account ID -> TrophySummary
+        self.player_titles = {}  # account ID -> list of TrophyTitle
+        self.player_trophies = {}  # (account ID, np_communication_id) -> list of trophies
+        self.player_errors = {}  # (account ID, "summary"|"titles"|"trophies") -> exception
+        self.player_lookups = []  # names passed to get_player
+        self.user_lookups = []  # account IDs passed to get_psnawp().user(account_id=...)
 
     def add(self, name, trophies=(), **kw):
         t = title(name, trophies, **kw)
@@ -163,6 +177,81 @@ class FakePSN:
     def map_title_ids(self, title_ids):
         self.mapped.append(list(title_ids))
         return {tid: self.title_map.get(tid) for tid in title_ids}
+
+    # Step-3 fetch helpers.
+    def get_friend_ids(self):
+        return list(self.friend_ids)
+
+    def get_friend_request_ids(self):
+        return list(self.request_ids)
+
+    def get_profiles(self, account_ids):
+        return {aid: self.profiles[aid] for aid in dict.fromkeys(account_ids) if aid in self.profiles}
+
+    def get_presences(self, account_ids):
+        return {aid: self.presences[aid] for aid in dict.fromkeys(account_ids) if aid in self.presences}
+
+    def get_player(self, online_id):
+        self.player_lookups.append(online_id)
+        for u in self.players.values():
+            if u.online_id.lower() == online_id.lower():
+                return u
+        raise PSNAWPNotFoundError(f"Online ID {online_id} does not exist.")
+
+    def get_psnawp(self):
+        fake = self
+
+        class _P:
+            def user(self, account_id=None, online_id=None):
+                assert account_id is not None
+                fake.user_lookups.append(account_id)
+                return fake.players[account_id]
+        return _P()
+
+    def _player_error(self, player, kind):
+        err = self.player_errors.get((player.account_id, kind))
+        if err:
+            raise err
+
+    def get_player_summary(self, player):
+        self._player_error(player, "summary")
+        return self.summaries[player.account_id]
+
+    def get_player_trophy_titles(self, player):
+        self._player_error(player, "titles")
+        return list(self.player_titles.get(player.account_id, []))
+
+    def get_player_title_trophies(self, player, t):
+        self._player_error(player, "trophies")
+        key = (player.account_id, t.np_communication_id)
+        if key not in self.player_trophies:
+            raise PSNAWPNotFoundError("no trophies")
+        return list(self.player_trophies[key])
+
+    def add_friend(self, online_id, *, online=None, last_online=None, platform="PS5", playing=None,
+                   plus=False, about="", presence=True, aid=None):
+        """A friend: profile + optional presence. online=None with presence=False means hidden."""
+        aid = self.add_player(online_id, plus=plus, about=about, aid=aid)
+        self.friend_ids.append(aid)
+        if presence:
+            self.presences[aid] = raw_presence(aid, online=bool(online), last_online=last_online,
+                                               platform=platform, playing=playing)
+        return aid
+
+    def add_player(self, online_id, *, plus=False, about="", aid=None, level=100, earned=None,
+                   titles=(), private=False):
+        """Any PSN player (friend or not), with a trophy summary and trophy list."""
+        aid = aid or f"{next(_ids) + 1000000000000000000}"
+        self.players[aid] = FakeUser(online_id, aid)
+        self.profiles[aid] = raw_basic_profile(online_id, plus=plus, about=about)
+        self.summaries[aid] = TrophySummary(
+            account_id=aid, trophy_level=level, progress=10, tier=2,
+            earned_trophies=TrophySet(**{"bronze": 0, "silver": 0, "gold": 0, "platinum": 0, **(earned or {})}))
+        self.player_titles[aid] = list(titles)
+        if private:
+            for kind in ("summary", "titles", "trophies"):
+                self.player_errors[(aid, kind)] = PSNAWPForbiddenError("private")
+        return aid
 
     # Builders for the step-2 data.
     def play(self, name, hours=1.0, **kw):
@@ -291,6 +380,45 @@ def raw_devices():
         {"deviceId": "SECRETDEVICEID2", "deviceType": "PS4", "activationType": "PSN_GAME_V3",
          "activationDate": None},
     ]
+
+
+class FakeUser:
+    """Shaped like psnawp's User: just the two IDs the tools read."""
+
+    def __init__(self, online_id, account_id):
+        self.online_id = online_id
+        self.account_id = account_id
+
+    def __repr__(self):
+        return f"FakeUser({self.online_id!r})"
+
+
+def raw_basic_profile(online_id, plus=False, about=""):
+    """One entry of PSN's /profiles batch answer (no account ID in it, like the real one)."""
+    return {"onlineId": online_id, "aboutMe": about, "avatars": [], "languages": ["en"],
+            "isPlus": plus, "isOfficiallyVerified": False, "isMe": False,
+            "personalDetail": {"firstName": "SECRETFIRST", "lastName": "SECRETLAST"}}
+
+
+def iso(dt: datetime) -> str:
+    """PSN's timestamp format: 2026-01-01T12:00:00.000Z."""
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def raw_presence(aid, online=False, last_online=None, platform="PS5", playing=None):
+    """One entry of get_presences()["basicPresences"]."""
+    p = {
+        "accountId": aid,
+        "availability": "availableToPlay" if online else "unavailable",
+        "primaryPlatformInfo": {"onlineStatus": "online" if online else "offline", "platform": platform},
+    }
+    if last_online:
+        p["lastAvailableDate"] = iso(last_online)
+        p["primaryPlatformInfo"]["lastOnlineDate"] = iso(last_online)
+    if playing:
+        p["gameTitleInfoList"] = [{"npTitleId": "PPSA00001_00", "titleName": playing, "format": "PS5",
+                                   "launchPlatform": platform}]
+    return p
 
 
 def call_raw(name, args=None):
