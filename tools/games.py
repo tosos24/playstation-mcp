@@ -23,6 +23,9 @@ TROPHY_TYPES = ("platinum", "gold", "silver", "bronze")
 
 OLDEST = datetime.min.replace(tzinfo=timezone.utc)
 
+# PSN play time only exists from the PS4 on, so no total can be longer than the time since its launch.
+PS4_LAUNCH = datetime(2013, 11, 15, tzinfo=timezone.utc)
+
 
 def _name_key(name: str) -> str:
     """Loose name for matching across PSN's lists ("EA SPORTS FC™ 26 Trophies" -> "ea sports fc 26")."""
@@ -56,9 +59,11 @@ def _add_play(rec: dict, stat) -> None:
     """Add one play-time entry to a record (a game can have PS4 and PS5 entries)."""
     rec["has_play_data"] = True
     duration = stat.play_duration or timedelta(0)
-    # PSN sometimes reports impossible totals (e.g. 50+ years). Ignore any longer than the time since first played.
+    # PSN sometimes reports impossible totals (e.g. 50+ years). Ignore any longer than the time since
+    # first played, or since the PS4 launch (also when there's no first-played date).
     started = stat.first_played_date_time
-    if started and duration > datetime.now(timezone.utc) - started:
+    now = datetime.now(timezone.utc)
+    if duration > now - PS4_LAUNCH or (started and duration > now - started):
         rec["bad_play_time"] = True
     else:
         rec["play"] += duration

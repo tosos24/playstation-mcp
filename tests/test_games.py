@@ -2,7 +2,7 @@
 
 import asyncio
 import dataclasses
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
@@ -127,6 +127,30 @@ def test_impossible_play_time_dropped_and_flagged(real):
         if other["game"] != "Glitchy Game":
             assert "play_time_warning" not in other
 
+
+
+def test_impossible_play_time_without_first_played_dropped_and_flagged(psn):
+    psn.add("No Start Date", done(1) + todo(1))
+    psn.stats.append(dataclasses.replace(stat("No Start Date", 463_000), first_played_date_time=None))
+    g = row(lg(sort_by="playtime"), "No Start Date")
+    assert g["hours_played"] == 0.0 and "play_time_warning" in g
+    assert g["first_played"] is None
+
+
+def test_play_time_longer_than_since_ps4_launch_dropped_even_with_old_first_played(psn):
+    psn.add("Too Long", done(1) + todo(1))
+    since_launch = datetime.now(timezone.utc) - games_mod.PS4_LAUNCH
+    # first_played wrongly far in the past, so only the PS4-launch limit catches it.
+    psn.play("Too Long", duration=since_launch + timedelta(days=1), first=datetime(1990, 1, 1, tzinfo=timezone.utc))
+    g = row(lg(sort_by="playtime"), "Too Long")
+    assert g["hours_played"] == 0.0 and "play_time_warning" in g
+
+
+def test_play_time_without_first_played_under_limit_kept(psn):
+    psn.add("Plausible", done(1) + todo(1))
+    psn.stats.append(dataclasses.replace(stat("Plausible", 5_000), first_played_date_time=None))
+    g = row(lg(sort_by="playtime"), "Plausible")
+    assert g["hours_played"] == 5000.0 and "play_time_warning" not in g
 
 def test_ps4_and_ps5_entries_summed(real):
     g = row(lg(sort_by="playtime", limit=100), "Cross Game")
