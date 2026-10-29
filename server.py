@@ -16,7 +16,7 @@ from mcp.server.mcpserver import MCPServer
 from starlette.responses import PlainTextResponse
 
 import psn_client
-from tools import games, profile, trophies
+from tools import friends, games, profile, trophies
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -27,6 +27,9 @@ INSTRUCTIONS = """Tools for reading my own PlayStation Network data. All tools a
 - One game in depth (hours, base game vs DLC progress): get_game_details.
 - Individual trophies (missing, latest earned, rarest, when I earned one): get_trophies.
 - My PSN level, trophy totals, PS Plus, consoles: get_my_profile.
+- My friends, who's online and what they're playing, friend requests: list_friends.
+- Another player's profile, level and recent games: get_player.
+- Comparing my trophies with another player (overall or for one game): compare_with_player.
 If a tool returns "matches", ask me which game I meant, then call again with that exact name.
 For tips on how to earn a trophy, use web search."""
 
@@ -36,6 +39,7 @@ mcp = MCPServer("playstation", instructions=INSTRUCTIONS)
 games.register(mcp)
 trophies.register(mcp)
 profile.register(mcp)
+friends.register(mcp)
 
 
 @mcp.custom_route("/health", methods=["GET"])
@@ -51,6 +55,7 @@ def warm_cache():
         psn_client.get_profile()
         psn_client.get_devices()
         psn_client.get_library()
+        psn_client.get_profiles(psn_client.get_friend_ids())  # names only; online status changes too fast
         logging.getLogger(__name__).info("Cache warmed up")
     except Exception:
         # Not fatal: tools fetch whatever they need on demand.

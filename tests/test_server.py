@@ -2,7 +2,8 @@ import asyncio
 
 import server
 
-EXPECTED = {"list_games", "get_game_details", "get_trophies", "get_my_profile"}
+EXPECTED = {"list_games", "get_game_details", "get_trophies", "get_my_profile",
+            "list_friends", "get_player", "compare_with_player"}
 
 
 def tools():

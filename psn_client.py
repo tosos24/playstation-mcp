@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from psnawp_api import PSNAWP
 from psnawp_api.core.psnawp_exceptions import PSNAWPError
 from psnawp_api.models.trophies import PlatformType
+from psnawp_api.utils.endpoints import API_PATH, BASE_PATH
 
 # Load .env from this file's folder, so it works no matter who starts the server.
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -21,6 +22,7 @@ CACHE_SECONDS = 10 * 60
 HOUR = 60 * 60
 DAY = 24 * HOUR
 
+_psnawp = None
 _me = None
 _cache: dict[str, tuple[float, object]] = {}
 
@@ -33,14 +35,21 @@ _key_locks_guard = threading.Lock()
 
 def get_me():
     """Return my logged-in PSN account. Logs in on first use only."""
-    global _me
+    global _psnawp, _me
     with _login_lock:
         if _me is None:
             npsso = os.getenv("NPSSO")
             if not npsso:
                 raise RuntimeError("NPSSO is missing. Put it in the .env file (see .env.example).")
-            _me = PSNAWP(npsso).me()
+            _psnawp = PSNAWP(npsso)
+            _me = _psnawp.me()
         return _me
+
+
+def get_psnawp() -> PSNAWP:
+    """The logged-in PSNAWP object, for looking up other players."""
+    get_me()
+    return _psnawp
 
 
 def cached(key: str, fetch, seconds: int = CACHE_SECONDS):
@@ -159,7 +168,97 @@ def map_title_ids(title_ids: list[str]) -> dict[str, str | None]:
     return result
 
 
+# ---------- Friends and other players ----------
+
+# PSN accepts up to 100 account IDs per batch request.
+ACCOUNT_BATCH = 100
+PRESENCE_SECONDS = 60
+
+
+def _profile_api(path: str, **params):
+    """GET from PSN's profile API with the logged-in session (for endpoints psnawp doesn't wrap)."""
+    return get_me().authenticator.get(url=f"{BASE_PATH['profile_uri']}{path}", params=params or None).json()
+
+
+def get_friend_ids() -> list[str]:
+    """Account IDs of my friends. One request (psnawp's friends_list() costs one per friend). Cached."""
+    return cached("friend_ids", lambda: _profile_api(API_PATH["friends_list"].format(account_id="me"), limit=1000)["friends"])
+
+
+def get_friend_request_ids() -> list[str]:
+    """Account IDs of people who sent me a friend request. Cached."""
+    return cached("friend_request_ids", lambda: [
+        r["accountId"] for r in _profile_api(API_PATH["friends_request"].format(account_id="me")).get("receivedRequests", [])
+    ])
+
+
+def get_profiles(account_ids: list[str]) -> dict[str, dict]:
+    """Basic profiles (onlineId, aboutMe, isPlus, ...) for many accounts, batched. Cached per account for an hour."""
+    result, missing = {}, []
+    for aid in dict.fromkeys(account_ids):
+        hit = _cache.get(f"profile:{aid}")
+        if hit and time.time() - hit[0] < HOUR:
+            result[aid] = hit[1]
+        else:
+            missing.append(aid)
+    for i in range(0, len(missing), ACCOUNT_BATCH):
+        batch = missing[i:i + ACCOUNT_BATCH]
+        profiles = _profile_api("/profiles", accountIds=",".join(batch)).get("profiles", [])
+        if len(profiles) != len(batch):
+            # The batch answer has no account IDs, only the same order. If the counts don't match,
+            # fall back to one request per account rather than risk mixing people up.
+            profiles = [_profile_api(API_PATH["profiles"].format(account_id=aid)) for aid in batch]
+        for aid, prof in zip(batch, profiles):
+            result[aid] = prof
+            _cache[f"profile:{aid}"] = (time.time(), prof)
+    return result
+
+
+def get_presences(account_ids: list[str]) -> dict[str, dict]:
+    """Online status and current game for many accounts, batched. Cached for a minute."""
+    result = {}
+    ids = list(dict.fromkeys(account_ids))
+    for i in range(0, len(ids), ACCOUNT_BATCH):
+        batch = ids[i:i + ACCOUNT_BATCH]
+        presences = cached(
+            "presences:" + ",".join(batch),
+            lambda: get_me().get_presences(batch).get("basicPresences", []),
+            PRESENCE_SECONDS,
+        )
+        result.update({p.get("accountId"): p for p in presences})
+    return result
+
+
+def get_player(online_id: str):
+    """Another player by exact PSN name (psnawp User). Cached for an hour."""
+    return cached(f"player:{online_id.lower()}", lambda: get_psnawp().user(online_id=online_id), HOUR)
+
+
+def get_player_summary(player):
+    """A player's trophy level and counts (psnawp TrophySummary). Cached."""
+    return cached(f"player_summary:{player.account_id}", lambda: player.trophy_summary())
+
+
+def get_player_trophy_titles(player) -> list:
+    """Every game on a player's trophy list. Cached."""
+    return cached(f"player_titles:{player.account_id}", lambda: list(player.trophy_titles(limit=None)))
+
+
+def get_player_title_trophies(player, title) -> list:
+    """A player's trophies (with earned flags) for one of my games. Cached."""
+    return cached(
+        f"player_trophies:{player.account_id}:{title.np_communication_id}",
+        lambda: list(player.trophies(
+            np_communication_id=title.np_communication_id,
+            platform=pick_platform(title),
+            include_progress=True,
+            trophy_group_id="all",
+        )),
+    )
+
+
 def forget_login():
     """Drop the saved login so the next call logs in again (e.g. after the NPSSO is renewed)."""
-    global _me
+    global _psnawp, _me
+    _psnawp = None
     _me = None
