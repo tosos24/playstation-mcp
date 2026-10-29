@@ -14,7 +14,7 @@ def register(mcp):
 
         Use this for questions like "what's my PSN level?", "how many platinums do I have?",
         "do I have PS Plus?" or "which consoles are on my account?". For per-game
-        progress use get_trophy_progress; for individual trophies use get_trophies.
+        progress or play time use list_games; for individual trophies use get_trophies.
 
         level_progress_percent is how far I am towards the next trophy level.
         """

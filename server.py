@@ -5,21 +5,26 @@ Two modes, chosen by the MODE environment variable:
 - http: for hosting online. MCP is served only at /mcp/<MCP_SECRET>.
 """
 
+import logging
 import os
 import sys
+import threading
 from pathlib import Path
 
 from dotenv import load_dotenv
 from mcp.server.mcpserver import MCPServer
 from starlette.responses import PlainTextResponse
 
-from tools import profile, trophies
+import psn_client
+from tools import games, profile, trophies
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # Read by Claude when it connects: a short map of which tool answers which kind of question.
 INSTRUCTIONS = """Tools for reading my own PlayStation Network data. All tools are read-only.
-- Ranking or listing my games by trophy completion: get_trophy_progress.
+- Listing or ranking my games (closest to platinum, most played, recently played, abandoned,
+  never played): list_games.
+- One game in depth (hours, base game vs DLC progress): get_game_details.
 - Individual trophies (missing, latest earned, rarest, when I earned one): get_trophies.
 - My PSN level, trophy totals, PS Plus, consoles: get_my_profile.
 If a tool returns "matches", ask me which game I meant, then call again with that exact name.
@@ -28,6 +33,7 @@ For tips on how to earn a trophy, use web search."""
 mcp = MCPServer("playstation", instructions=INSTRUCTIONS)
 
 # Each feature adds its tools here. To add one: import it and call register.
+games.register(mcp)
 trophies.register(mcp)
 profile.register(mcp)
 
@@ -36,6 +42,19 @@ profile.register(mcp)
 async def health(request):
     """Lets the host check the server is up. Reveals nothing about my data."""
     return PlainTextResponse("ok")
+
+
+def warm_cache():
+    """Fetch the big lists in the background at startup, so the first question isn't the slow one."""
+    try:
+        games.build_games()  # trophy list + play time + title ID lookups
+        psn_client.get_profile()
+        psn_client.get_devices()
+        psn_client.get_library()
+        logging.getLogger(__name__).info("Cache warmed up")
+    except Exception:
+        # Not fatal: tools fetch whatever they need on demand.
+        logging.getLogger(__name__).exception("Cache warm-up failed")
 
 
 def run_http():
@@ -57,6 +76,7 @@ def run_http():
 
 
 if __name__ == "__main__":
+    threading.Thread(target=warm_cache, daemon=True).start()
     if os.getenv("MODE", "stdio") == "http":
         run_http()
     else:

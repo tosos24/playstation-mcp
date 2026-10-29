@@ -1,11 +1,11 @@
-"""Trophy tools: completion progress, and finding trophies (missing, recent, rarest, by name)."""
+"""Trophy tools: finding individual trophies (missing, recent, rarest, by name)."""
 
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from psn_client import get_title_trophies, get_trophy_titles
 
-from tools.common import game_summary, normalize, read_only_tool, resolve_one_game
+from tools.common import display_name, game_summary, normalize, read_only_tool, resolve_one_game
 
 # Fetching one game's trophies costs ~6 s (psnawp waits between requests), so cap scans across games.
 MAX_SCAN_GAMES = 5
@@ -70,25 +70,6 @@ def register(mcp):
     tool = read_only_tool(mcp)
 
     @tool
-    def get_trophy_progress(limit: int = 20, include_completed: bool = False) -> list[dict]:
-        """List my PlayStation games by trophy completion %, highest first.
-
-        Use this for questions like "which games am I closest to platinum on?" or
-        "what are my most completed games?". By default games already at 100% are
-        left out; set include_completed=True to include them. For individual
-        trophies, use get_trophies instead.
-
-        Notes: PSN's % is weighted by trophy points (a gold counts more than a
-        bronze) and includes DLC trophies. Some games have no platinum at all
-        (see has_platinum). Trophy % is not the same as finishing the story.
-        """
-        titles = get_trophy_titles()
-        if not include_completed:
-            titles = [t for t in titles if (t.progress or 0) < 100]
-        titles = sorted(titles, key=lambda t: t.progress or 0, reverse=True)
-        return [game_summary(t) for t in titles[:limit]]
-
-    @tool
     def get_trophies(
         game_name: str | None = None,
         status: Literal["unearned", "earned", "all"] = "unearned",
@@ -115,7 +96,7 @@ def register(mcp):
 
         Without game_name, only my most recently active games are searched (see "note"
         and "games_searched" in the result). For whole-library rankings of games, use
-        get_trophy_progress instead.
+        list_games instead.
 
         Each trophy has: name, description, type (bronze/silver/gold/platinum),
         earn_rate (% of all players who have it), earned, earned_at (UTC), hidden, dlc.
@@ -152,8 +133,8 @@ def register(mcp):
                     last = game.last_updated_datetime
                     if last is None or last + CLOCK_SLACK < cutoff:
                         break
-                searched.append(game.title_name)
-                found += [_trophy_dict(tr, game.title_name) for tr in get_title_trophies(game)
+                searched.append(display_name(game.title_name))
+                found += [_trophy_dict(tr, display_name(game.title_name)) for tr in get_title_trophies(game)
                           if _keep(tr, status, search, include_dlc)]
                 _sort(found, "recent")
             return {"games_searched": searched, "count": len(found), "trophies": found[:limit]}
@@ -164,11 +145,11 @@ def register(mcp):
         scope = games[:MAX_SCAN_GAMES]
         found = []
         for game in scope:
-            found += [_trophy_dict(tr, game.title_name) for tr in get_title_trophies(game)
+            found += [_trophy_dict(tr, display_name(game.title_name)) for tr in get_title_trophies(game)
                       if _keep(tr, status, search, include_dlc)]
         _sort(found, sort_by)
         return {
-            "games_searched": [g.title_name for g in scope],
+            "games_searched": [display_name(g.title_name) for g in scope],
             "note": (f"Only searched my {len(scope)} most recently active games, to stay fast. "
                      "Pass game_name to search a specific game."),
             "count": len(found),

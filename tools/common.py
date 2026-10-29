@@ -50,9 +50,19 @@ def read_only_tool(mcp):
     return decorator
 
 
+# Roman numerals in game names, so "Alan Wake 2" matches "Alan Wake II". ("i" is left alone: it's usually a word.)
+ROMAN = {"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10"}
+
+
 def normalize(text: str) -> str:
-    """Lowercase and strip symbols like ™ ® : so names compare loosely."""
-    return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+    """Lowercase, strip symbols like ™ ® :, and turn Roman numerals into digits, so names compare loosely."""
+    words = re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).split()
+    return " ".join(ROMAN.get(w, w) for w in words)
+
+
+def display_name(title_name: str) -> str:
+    """Game name for answers: PSN calls some trophy lists "<Game> Trophies", which reads oddly."""
+    return re.sub(r"\s+Trophies$", "", title_name or "", flags=re.IGNORECASE)
 
 
 def find_games(game_name: str) -> list:
@@ -77,7 +87,7 @@ def find_games(game_name: str) -> list:
 def game_summary(t) -> dict:
     """Small, clean description of one game on my trophy list."""
     return {
-        "game": t.title_name,
+        "game": display_name(t.title_name),
         "platforms": sorted(p.value for p in t.title_platform),
         "progress_percent": t.progress or 0,
         "has_platinum": bool(t.defined_trophies.platinum),

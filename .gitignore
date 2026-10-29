@@ -8,3 +8,6 @@ __pycache__/
 
 # Personal planning notes
 PLAN.md
+
+# Agent worktrees (temporary copies of the repo)
+.claude/worktrees/
