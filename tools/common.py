@@ -4,6 +4,7 @@ import difflib
 import functools
 import re
 
+import requests
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from psnawp_api.core.psnawp_exceptions import (
@@ -38,7 +39,7 @@ def _friendly_message(exc: PSNAWPError) -> str:
 
 
 def read_only_tool(mcp):
-    """Like @mcp.tool(), but marks the tool read-only and turns PSN errors into clear messages."""
+    """Like @mcp.tool(), but marks the tool read-only and turns PSN, login and network errors into clear messages."""
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
@@ -46,6 +47,10 @@ def read_only_tool(mcp):
                 return fn(*args, **kwargs)
             except PSNAWPError as exc:
                 raise ToolError(_friendly_message(exc)) from exc
+            except requests.exceptions.RequestException as exc:
+                raise ToolError("Couldn't reach PSN (network error). Try again shortly.") from exc
+            except RuntimeError as exc:  # e.g. "NPSSO is missing..." from the login
+                raise ToolError(str(exc)) from exc
         return mcp.tool(annotations=READ_ONLY)(wrapper)
     return decorator
 

@@ -1,4 +1,5 @@
 import pytest
+import requests
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from psnawp_api.core.psnawp_exceptions import (
     PSNAWPAuthenticationError,
@@ -157,6 +158,26 @@ def test_plain_text_psn_error(psn):
     with pytest.raises(ToolError) as info:
         call_raw("get_trophies", {"game_name": "x"})
     assert "PSN request failed: Bad gateway" in str(info.value)
+
+
+def test_missing_npsso_message_reaches_claude(monkeypatch):
+    # No fake PSN: the real login runs and finds no NPSSO.
+    monkeypatch.delenv("NPSSO", raising=False)
+    monkeypatch.setattr(psn_client, "_me", None)
+    with pytest.raises(ToolError) as info:
+        call_raw("get_trophies", {"game_name": "x"})
+    assert not isinstance(info.value, UnexpectedToolError)
+    assert "NPSSO is missing" in str(info.value)
+
+
+@pytest.mark.parametrize("exc", [requests.exceptions.ConnectionError("boom"), requests.exceptions.Timeout()])
+def test_network_error_message(psn, exc):
+    raise_in(psn, "titles", exc)
+    with pytest.raises(ToolError) as info:
+        call_raw("get_trophies", {"game_name": "x"})
+    assert not isinstance(info.value, UnexpectedToolError)
+    assert "Couldn't reach PSN" in str(info.value)
+    assert "Try again" in str(info.value)
 
 
 def test_error_while_fetching_trophies(psn):
