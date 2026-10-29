@@ -129,7 +129,8 @@ def register(mcp):
         if status == "earned" and sort_by == "recent":
             found, searched = [], []
             for game in games[:MAX_RECENT_SCAN_GAMES]:
-                if len(found) >= limit:
+                # A trophy with no earned date sorts last, so any dated one could still beat it: keep going.
+                if len(found) >= limit and found[limit - 1]["earned_at"]:
                     cutoff = datetime.fromisoformat(found[limit - 1]["earned_at"])
                     last = game.last_updated_datetime
                     if last is None or last + CLOCK_SLACK < cutoff:

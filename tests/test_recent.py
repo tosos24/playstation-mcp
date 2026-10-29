@@ -191,10 +191,11 @@ def test_recent_output_shape(psn):
     assert t["earned"] is True
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: an earned trophy with no earned_date_time crashes the early-stop "
-                                      "(datetime.fromisoformat(None)) instead of being sorted last")
 def test_earned_trophy_without_date_does_not_crash(psn):
     psn.add("Weird", [trophy("dateless", earned=True, earned_at=None)], last_updated=at(0))
     psn.add("Other", [trophy("o", earned=True, earned_at=at(-1))])
     out = recent(limit=1)
     assert out["count"] >= 1
+    # The dated trophy wins; the dateless one sorts last.
+    assert [t["name"] for t in out["trophies"]] == ["o"]
+    assert [t["name"] for t in recent(limit=5)["trophies"]] == ["o", "dateless"]
