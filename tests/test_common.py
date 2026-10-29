@@ -26,7 +26,9 @@ def test_normalize():
 
 
 @pytest.mark.parametrize("roman,digit", [("II", "2"), ("iii", "3"), ("IV", "4"), ("V", "5"), ("VI", "6"),
-                                         ("VII", "7"), ("VIII", "8"), ("IX", "9"), ("X", "10")])
+                                         ("VII", "7"), ("VIII", "8"), ("IX", "9"), ("X", "10"),
+                                         ("XI", "11"), ("XII", "12"), ("XIII", "13"), ("XIV", "14"), ("XV", "15"),
+                                         ("XVI", "16"), ("XVII", "17"), ("XVIII", "18"), ("XIX", "19"), ("xx", "20")])
 def test_normalize_roman_numerals(roman, digit):
     assert normalize(f"Game {roman}") == f"game {digit}"
     assert normalize(f"Game {roman}: Subtitle") == f"game {digit} subtitle"
@@ -37,6 +39,8 @@ def test_normalize_roman_only_standalone_words():
     assert normalize("Vivid Xtreme Mix") == "vivid xtreme mix"
     assert normalize("Final Fantasy VII Remake") == "final fantasy 7 remake"
     assert normalize("Alan Wake II") == normalize("Alan Wake 2")
+    assert normalize("XIth Hour Xvi") == "xith hour 16"
+    assert normalize("XXI XXX") == "xxi xxx"
 
 
 def test_display_name():
@@ -55,6 +59,15 @@ def test_alan_wake_2_finds_alan_wake_ii(psn):
     assert names(find_games("Alan Wake 2")) == ["Alan Wake II"]
     assert names(find_games("alan wake ii")) == ["Alan Wake II"]
 
+
+
+def test_teen_roman_numerals_find_games(psn):
+    psn.add("FINAL FANTASY XVI", [trophy()])
+    psn.add("FINAL FANTASY XV", [trophy()])
+    psn.add("DRAGON QUEST XI S: Echoes of an Elusive Age - Definitive Edition", [trophy()])
+    psn.add("DRAGON QUEST XI", [trophy()])
+    assert names(find_games("Final Fantasy 16")) == ["FINAL FANTASY XVI"]
+    assert names(find_games("Dragon Quest 11")) == ["DRAGON QUEST XI"]
 
 def test_game_fields_drop_trophies_suffix(psn):
     psn.add("EA SPORTS FC™ 26 Trophies", [trophy(earned=True, earned_at=at(1))])

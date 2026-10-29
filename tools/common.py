@@ -56,7 +56,9 @@ def read_only_tool(mcp):
 
 
 # Roman numerals in game names, so "Alan Wake 2" matches "Alan Wake II". ("i" is left alone: it's usually a word.)
-ROMAN = {"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10"}
+ROMAN = {"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10",
+         "xi": "11", "xii": "12", "xiii": "13", "xiv": "14", "xv": "15", "xvi": "16", "xvii": "17", "xviii": "18",
+         "xix": "19", "xx": "20"}
 
 
 def normalize(text: str) -> str:
