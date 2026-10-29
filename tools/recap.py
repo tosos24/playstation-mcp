@@ -35,6 +35,10 @@ def register(mcp):
 
         PSN only has total hours per game, not hours per period, so the recap lists the games
         played in the period without hours. For all-time rankings use list_games.
+
+        Trophies are counted in at most 12 games (the most recently active). If more games had
+        trophy activity, "partial" is true and trophies_earned is too low: games_with_activity
+        says how many games had activity and games_checked how many were counted.
         """
         now = datetime.now(timezone.utc)
         start = _period_start(period, now)
@@ -74,6 +78,9 @@ def register(mcp):
             "from": start.date().isoformat(),
             "to": now.date().isoformat(),
             "trophies_earned": {**counts, "total": sum(counts.values())},
+            "partial": len(active) > len(checked),
+            "games_with_activity": len(active),
+            "games_checked": len(checked),
             "trophies_by_game": by_game,
             "platinums_earned": platinums,
             "rarest_trophy": rarest,

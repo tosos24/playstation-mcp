@@ -180,12 +180,24 @@ def test_capped_at_12_games(psn):
     assert psn.fetched == [f"G{i:02d}" for i in range(12)]  # newest first
     assert out["trophies_earned"]["total"] == 12
     assert "12 most recently active" in out["note"] and "2 more" in out["note"]
+    assert out["partial"] is True
+    assert out["games_with_activity"] == 14 and out["games_checked"] == 12
 
 
 def test_no_cap_note_at_exactly_12(psn):
     for i in range(12):
         psn.add(f"G{i:02d}", [won(days=1)])
-    assert "more games" not in recap("week")["note"]
+    out = recap("week")
+    assert "more games" not in out["note"]
+    assert out["partial"] is False
+    assert out["games_with_activity"] == out["games_checked"] == 12
+
+
+def test_not_partial_when_nothing_active(psn):
+    psn.add("Old", [won(days=100)])
+    out = recap("week")
+    assert out["partial"] is False
+    assert out["games_with_activity"] == out["games_checked"] == 0
 
 
 # ---------- games played / started ----------
