@@ -127,19 +127,27 @@ def register(mcp):
         # Latest earned trophies across all games. Each game knows when I last earned a trophy
         # in it, so walk games newest-first and stop once no older game could beat what we have.
         if status == "earned" and sort_by == "recent":
-            found, searched = [], []
-            for game in games[:MAX_RECENT_SCAN_GAMES]:
+            found, searched, capped = [], [], False
+            for game in games:
                 # A trophy with no earned date sorts last, so any dated one could still beat it: keep going.
                 if len(found) >= limit and found[limit - 1]["earned_at"]:
                     cutoff = datetime.fromisoformat(found[limit - 1]["earned_at"])
                     last = game.last_updated_datetime
                     if last is None or last + CLOCK_SLACK < cutoff:
                         break
+                # This game could still have newer trophies, but we've searched enough games.
+                if len(searched) == MAX_RECENT_SCAN_GAMES:
+                    capped = True
+                    break
                 searched.append(display_name(game.title_name))
                 found += [_trophy_dict(tr, display_name(game.title_name)) for tr in get_title_trophies(game)
                           if _keep(tr, status, search, include_dlc)]
                 _sort(found, "recent")
-            return {"games_searched": searched, "count": len(found), "trophies": found[:limit]}
+            reply = {"games_searched": searched}
+            if capped:
+                reply["note"] = (f"Only searched my {len(searched)} most recently active games, to stay fast. "
+                                 "Pass game_name to search a specific game.")
+            return {**reply, "count": len(found), "trophies": found[:limit]}
 
         # Anything else across games: check only the most recently active ones, to stay fast.
         if status == "unearned":
