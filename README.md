@@ -1,52 +1,43 @@
 # PlayStation MCP
 
-An MCP server that lets Claude read my PlayStation trophy data.
+Lets Claude read my PlayStation account, so I can ask things like:
 
-## Setup
-```
-python -m venv venv
-venv\Scripts\python -m pip install -r requirements.txt
-copy .env.example .env    # then paste your NPSSO into .env
-```
-Get the NPSSO: sign in at playstation.com, then open
-https://ca.account.sony.com/api/v1/ssocookie in the same browser and copy the `npsso` value.
-It expires after about 2 months. When the tools start failing, get a new one.
+- "Which games am I closest to platinum on?"
+- "What was the last trophy I got?"
+- "Who's online right now, and what are they playing?"
+- "What did I play this month?"
 
-## Run
-- Quick check (no MCP): `venv\Scripts\python scripts\check_psn.py`
-- Server: `venv\Scripts\python server.py`
-- Inspector (needs Node.js): double-click `inspect.cmd`, or run `inspect.cmd` in the project folder.
-  Don't use `mcp dev server.py`: it needs `uv` and runs the server without this project's packages.
-- Web mode (for hosting): set `MODE=http` and `MCP_SECRET` (see `.env.example`), then run `server.py`.
-  MCP is served only at `/mcp/<MCP_SECRET>`; `/health` returns `ok`. The `Dockerfile` runs this mode.
+It only reads data. It can't change anything on the account.
+
+## What it can do
+
+| Tool | What it's for |
+|---|---|
+| `list_games` | Rank my games by trophy progress, hours played or how recently I played them. It can also show games I've abandoned or bought and never played. |
+| `get_game_details` | Everything about one game: hours played, and trophy progress for the main game and each DLC |
+| `get_trophies` | Find trophies: ones I'm missing, my latest, my rarest, or when I earned a specific one |
+| `get_my_profile` | My PSN level, trophy counts and consoles |
+| `list_friends` | My friends, who's online and what they're playing |
+| `get_player` | Look up a friend or any player |
+| `compare_with_player` | Compare my trophies with someone else's |
+| `get_recap` | What I did in the last week, month or year |
+
+## How it works
+
+PlayStation has no official API for this, so it uses [psnawp](https://pypi.org/project/psnawp/), an unofficial library. It logs in with a token from my PlayStation account and saves answers for a few minutes, because PlayStation only allows about 300 requests every 15 minutes.
+
+It runs on Render and connects to the Claude app as a custom connector. The address includes a long secret, and without it the server says the page doesn't exist.
+
+## Run it yourself
+
+1. Install: `pip install -r requirements.txt`
+2. Copy `.env.example` to `.env` and paste in your PlayStation token (NPSSO). To get it, sign in at playstation.com, then open https://ca.account.sony.com/api/v1/ssocookie and copy the `npsso` value. It expires about every 2 months.
+3. Try it: run `inspect.cmd` (needs Node.js) and test the tools in your browser.
+
+To put it online, use the `Dockerfile` and set `NPSSO` and `MCP_SECRET` on your host.
 
 ## Tests
-```
-venv\Scripts\python -m pip install -r requirements-dev.txt
-venv\Scripts\python -m pytest                 # unit tests, fake PSN data
-set RUN_LIVE=1 && venv\Scripts\python -m pytest -m live   # a few checks against the real account
-```
-`.claude/agents/` holds the two Claude Code agents used while building: `ps-tester` writes and runs
-tests after each step, and `ps-bug-fixer` fixes what it finds.
 
-## Tools
-All tools are read-only.
-- `list_games(sort_by, filter, limit)`: rank games by trophy %, play time, recency or play count;
-  filter unfinished, completed, platinum earned, abandoned (90+ days) or never played
-- `get_game_details(game_name)`: one game's hours, play count and base-game vs DLC trophy progress
-- `get_trophies(game_name?, status, sort_by, search?, include_dlc, limit)`: individual trophies:
-  missing, latest earned, rarest, or one by name ("when did I get the platinum in X?")
-- `get_my_profile()`: PSN level, trophy totals, PS Plus, consoles
-- `list_friends(online_only)`: friends, who's online and what they're playing, friend requests
-- `get_player(name)`: a friend's (or any player's) profile, level and recent games
-- `compare_with_player(name, game_name?)`: compare trophies overall or for one game
-- `get_recap(period)`: trophies earned, games played and started in the last week, month or this year
+`pytest` runs about 570 tests on fake data. `RUN_LIVE=1 pytest -m live` runs a few checks against a real account.
 
-Game names can be loose ("spiderman 2", "alan wake 2"); add the console ("... PS5") to pick between
-same-named PS4 and PS5 trophy lists.
-
-## Adding a feature
-Create `tools/<feature>.py` with a `register(mcp)` function, then add one import and one
-`register` line in `server.py`. Decorate tools with `read_only_tool(mcp)` from `tools/common.py`
-(marks them read-only and turns PSN errors into clear messages), and add a line to the server
-`INSTRUCTIONS` saying which questions the new tool answers.
+While building it, I used two Claude Code agents, kept in `.claude/agents/`: one wrote tests after each step, and the other fixed the bugs it found.
