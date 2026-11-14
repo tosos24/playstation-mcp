@@ -1,14 +1,9 @@
 ---
 name: psn-stats-unofficial
-description: Answer questions about the user's own PlayStation Network account (trophies, platinum progress, hours played, games owned, friends online, comparing trophies with a friend, and weekly/monthly/yearly recaps) using the playstation-mcp server's tools. Use when the user asks about their PSN trophies, PlayStation games, play time or PSN friends. Unofficial; not affiliated with Sony. Needs the playstation-mcp MCP server connected.
+description: Answer questions about the user's own PlayStation Network account (trophies, platinum progress, hours played, games owned, friends online, comparing trophies with a friend, and weekly/monthly/yearly recaps) using the playstation-mcp server's tools. Use when the user asks about their PSN trophies, PlayStation games, play time or PSN friends. Needs the playstation-mcp MCP server connected. Unofficial, not affiliated with Sony.
 ---
 
-# PSN stats (unofficial)
-
-**Unofficial.** Not made by or connected to Sony. The playstation-mcp server uses psnawp, an
-unofficial PlayStation library, with the user's own login token. Sony doesn't support this, and
-heavy use could get an account restricted. All tools only read data, and the server stays under
-PlayStation's rate limits.
+# PSN stats
 
 ## Before you start
 
@@ -73,3 +68,10 @@ web-search tips for the first few.
 
 **"How do I compare with my friend Alex?"**
 Call `compare_with_player` with `name="alex"`. If it returns `matches`, ask which friend.
+
+## About
+
+This is an unofficial project, not made by or connected to Sony. The playstation-mcp server uses
+psnawp, an unofficial PlayStation library, with the user's own login token. Sony doesn't support
+this, and heavy use could get an account restricted. All tools only read data, and the server stays
+under PlayStation's rate limits. If the user asks about risks, explain this.
