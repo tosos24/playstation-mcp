@@ -9,6 +9,8 @@ Lets Claude read my PlayStation account, so I can ask things like:
 
 It only reads data. It can't change anything on the account.
 
+`skill/` has a skill file that tells AI agents which tool to use for which question.
+
 ## What it can do
 
 | Tool | What it's for |

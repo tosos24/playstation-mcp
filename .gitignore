@@ -11,3 +11,6 @@ PLAN.md
 
 # Agent worktrees (temporary copies of the repo)
 .claude/worktrees/
+
+# Packaged skill zips
+dist/
