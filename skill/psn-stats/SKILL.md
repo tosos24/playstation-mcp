@@ -1,5 +1,5 @@
 ---
-name: psn-stats-unofficial
+name: psn-stats
 description: Answer questions about the user's own PlayStation Network account (trophies, platinum progress, hours played, games owned, friends online, comparing trophies with a friend, and weekly/monthly/yearly recaps) using the playstation-mcp server's tools. Use when the user asks about their PSN trophies, PlayStation games, play time or PSN friends. Needs the playstation-mcp MCP server connected. Unofficial, not affiliated with Sony.
 ---
 
